@@ -1,14 +1,11 @@
-anydl-owner-only/
+Anydl_bot_Nandu/
 ├── bot.py
 ├── config.py
 ├── auth.py
 ├── cleanup.py
-├── requirements.txt
-├── Dockerfile
-├── Procfile
-├── app.json
-├── README.md
-└── plugins/
-    ├── torrent_file.py   ✅ (only torrent logic)
-    ├── status.py
-    └── stop.py
+├── plugins/
+│   ├── torrent_file.py
+│   ├── status.py
+│   └── stop.py
+└── requirements.txt
+
