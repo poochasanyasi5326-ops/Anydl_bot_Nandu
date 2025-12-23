@@ -1,45 +1,45 @@
-# ANYDL – Owner-Only Torrent Bot (Railway)
+# ANYDL – Owner-Only Torrent Bot
 
-A **private Telegram downloader bot** built with **Pyrogram v2**, designed strictly for **personal use** and optimized for **Railway deployment using Docker**.
+A **private Telegram downloader bot** built with **Pyrogram v2**, designed for **personal use only**.  
+Supports **`.torrent` file uploads**, strict limits, and **owner-only access**.
 
 > ⚠️ This bot is NOT public  
-> ⚠️ Only the owner can use it  
-> ⚠️ Torrent support is best-effort due to Railway limitations
+> ⚠️ Only whitelisted owner IDs can use it  
+> ⚠️ Torrent usage on Heroku is risky (see notes below)
 
 ---
 
-## 🚀 One-Click Deploy (Railway)
+## 🚀 One-Click Deploy (Heroku)
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new)
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy)
 
-
-> After clicking the button, connect your GitHub repo when prompted.  
-> Railway will auto-detect **Docker** and build automatically.
+> Heroku will read `app.json` and prompt you for required environment variables.
 
 ---
 
 ## ✅ Features
 
-- 🔐 **Owner-only access** (hard enforced)
-- 🧲 **Torrent & magnet support** via aria2
+- 🔐 **Owner-only access** (via `OWNER_IDS` env var)
+- 🧲 **Torrent support via `.torrent` files only**
 - 📦 **Hard 4 GB download cap**
-- 📊 `/status` – monitor active torrent
-- 🛑 `/stop` – kill active torrent immediately
-- 🧹 Auto-delete downloads after 6 hours
+- 📊 `/status` – check active torrent progress
+- 🛑 `/stop` – immediately stop active torrent
+- 🧹 Auto-cleanup after 6 hours
 - 🐳 **Docker-based deployment**
-- 📉 Minimal logs (safe for cloud hosting)
+- 📉 Minimal logs (cloud-safe)
 
 ---
 
 ## ❌ Not Supported (by design)
 
+- Magnet links
 - Public users
-- Inline buttons or UI menus
+- Inline buttons / UI menus
 - Multi-user queues
 - Forced channel join
 - Guaranteed torrent completion
 
-This is intentional to reduce abuse and platform risk.
+These are intentionally excluded to reduce abuse and platform risk.
 
 ---
 
@@ -56,43 +56,26 @@ anydl-owner-only/
 ├── app.json
 ├── README.md
 └── plugins/
-├── torrent.py
+├── torrent_file.py
 ├── status.py
 └── stop.py
 
 
 ---
 
-## 🚀 Deploy on Railway (Recommended)
+## ⚙️ Required Environment Variables
 
-### Step 1: Push to GitHub
-Create a new GitHub repository and push this project.
-
----
-
-### Step 2: Deploy on Railway
-1. Go to https://railway.app
-2. Click **New Project → Deploy from GitHub Repo**
-3. Select your repository
-4. Railway will **auto-detect Docker**
-5. Click **Deploy**
-
-No additional configuration required.
-
----
-
-### Step 3: Set Environment Variables
-
-In Railway → **Variables**, add:
+Heroku will ask for these during deploy (or add later in **Settings → Config Vars**):
 
 | Variable | Description |
 |--------|-------------|
 | `API_ID` | Telegram API ID |
 | `API_HASH` | Telegram API Hash |
 | `BOT_TOKEN` | Telegram Bot Token |
+| `OWNER_IDS` | Comma-separated Telegram user IDs (e.g. `519459195`) |
 
-📌 Get API ID & HASH: https://my.telegram.org  
-📌 Get BOT_TOKEN from **@BotFather**
+📌 Get API credentials: https://my.telegram.org  
+📌 Get bot token from **@BotFather**
 
 ---
 
@@ -103,27 +86,24 @@ In Railway → **Variables**, add:
 | `/start` | Bot health check |
 | `/status` | Show torrent progress |
 | `/stop` | Stop active torrent |
-| Magnet / `.torrent` | Start torrent download |
+| Upload `.torrent` | Start torrent download |
 
 ---
 
-## ⚠️ Railway Torrent Usage Warning
+## ⚠️ Important Heroku Warning (Read This)
 
-Railway does **not officially support P2P traffic**.
+Heroku **does NOT allow BitTorrent / P2P traffic** under its Acceptable Use Policy.
 
-What this means in practice:
-- Small, well-seeded torrents usually work
-- Slow or large torrents may fail
-- High bandwidth usage may trigger throttling
-- Containers can restart without notice
+What this means:
+- ❌ High chance of app suspension if torrents are used
+- ❌ Owner-only access does NOT reduce this risk
+- ✔️ HTTP / non-P2P features are generally safe
 
-### Recommended usage
-- Prefer torrents under **2–3 GB**
-- Use well-seeded public torrents
-- Monitor progress with `/status`
-- Stop early if progress is slow
+### Recommendation
+- Use **Railway** for torrents (best-effort)
+- Use **Heroku** only if you **disable torrent usage**
 
-Failures here are **platform-level**, not code bugs.
+Your code is correct; any suspension would be **platform policy**, not a bug.
 
 ---
 
@@ -131,19 +111,28 @@ Failures here are **platform-level**, not code bugs.
 
 - The file must be named **exactly** `Dockerfile`
 - No file extension (`.py`, `.txt`, etc.)
-- Railway builds automatically using Docker
+- Heroku uses the Dockerfile because `stack: container` is set
 
 ---
 
 ## 🛑 Legal & Policy Notice
 
-This bot is for **personal use only**.
+This project is for **personal use only**.
 
 You are responsible for:
 - Content you download
-- Compliance with Railway policies
+- Compliance with hosting provider policies
 - Compliance with local laws
 
 The author assumes **no liability** for misuse.
 
+---
 
+## 🧠 Final Notes
+
+✔️ Clean architecture  
+✔️ Owner-only enforced at startup  
+✔️ Ready for Heroku & Railway  
+⚠️ Torrent reliability depends on platform rules  
+
+If you want a **Heroku-safe mode** (auto-disable torrents via env var), it can be added cleanly.
