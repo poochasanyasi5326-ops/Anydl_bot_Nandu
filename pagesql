@@ -9,6 +9,6 @@ anydl-owner-only/
 ├── app.json
 ├── README.md
 └── plugins/
-    ├── torrent.py
+    ├── torrent_file.py   ✅ (only torrent logic)
     ├── status.py
     └── stop.py
