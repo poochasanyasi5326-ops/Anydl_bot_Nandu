@@ -5,8 +5,8 @@ from config import TORRENT_STATE
 @filters.private & owner_only() & filters.command("stop")
 async def stop(_, message):
     proc = TORRENT_STATE.get("process")
-    if not proc or not TORRENT_STATE["active"]:
-        await message.reply_text("ℹ️ No active torrent to stop.")
+    if not proc:
+        await message.reply_text("ℹ️ No active torrent.")
         return
 
     proc.kill()
