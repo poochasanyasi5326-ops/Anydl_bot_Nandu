@@ -15,7 +15,7 @@ async def status(_, message):
 
     await message.reply_text(
         f"📊 Torrent Status\n\n"
-        f"Downloaded: {used/1024**2:.1f} MB\n"
+        f"Downloaded: {used / 1024**2:.1f} MB\n"
         f"Usage: {pct:.1f}% of 4 GB\n"
-        f"Elapsed: {elapsed//60}m {elapsed%60}s"
+        f"Elapsed: {elapsed // 60}m {elapsed % 60}s"
     )
