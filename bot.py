@@ -1,12 +1,13 @@
 import asyncio
 import logging
 from pyrogram import Client, filters
-from config import API_ID, API_HASH, BOT_TOKEN
+
+from config import API_ID, API_HASH, BOT_TOKEN, LOG_LEVEL
 from auth import owner_only
 from cleanup import cleanup_loop
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
     format="%(levelname)s | %(message)s"
 )
 
@@ -20,11 +21,16 @@ app = Client(
 
 @app.on_message(filters.private & ~owner_only())
 async def unauthorized(_, message):
-    await message.reply_text("❌ Not authorized")
+    await message.reply_text("❌ Not authorized.")
 
 @app.on_message(filters.private & owner_only() & filters.command("start"))
 async def start(_, message):
-    await message.reply_text("✅ Owner-only torrent bot running.")
+    await message.reply_text(
+        "✅ Owner-only downloader bot running.\n\n"
+        "Upload a .torrent file to start.\n"
+        "/status – progress\n"
+        "/stop – stop download"
+    )
 
 async def main():
     await app.start()
