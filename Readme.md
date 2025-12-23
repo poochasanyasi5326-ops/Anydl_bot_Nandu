@@ -13,6 +13,7 @@ Supports **`.torrent` file uploads**, strict limits, and **owner-only access**.
 
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](
 https://www.heroku.com/deploy?template=https://github.com/nsnandalal/Anydl_bot_Nandu
+)
 
 
 
