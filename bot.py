@@ -19,11 +19,7 @@ app = Client(
     plugins=dict(root="plugins")
 )
 
-@app.on_message(filters.private & ~owner_only())
-async def unauthorized(_, message):
-    await message.reply_text("❌ Not authorized.")
-
-@app.on_message(filters.private & owner_only() & filters.command("start"))
+@app.on_message(filters.private & filters.command("start") & owner_only())
 async def start(_, message):
     await message.reply_text(
         "✅ Owner-only downloader bot running.\n\n"
@@ -31,6 +27,10 @@ async def start(_, message):
         "/status – progress\n"
         "/stop – stop download"
     )
+
+@app.on_message(filters.private & ~owner_only() & ~filters.command("start"))
+async def unauthorized(_, message):
+    await message.reply_text("❌ Not authorized.")
 
 async def main():
     await app.start()
