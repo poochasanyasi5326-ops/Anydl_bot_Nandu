@@ -197,7 +197,6 @@ async def process_task(client, status_msg, user_id):
             final_path = await asyncio.to_thread(run_ytdlp, url, mode, download_path)
         
         elif task["is_torrent"]:
-            # 🚀 ADD TRACKERS
             if "magnet:?" in url: 
                 for tr in TRACKERS: url += f"&tr={tr}"
             
@@ -211,14 +210,12 @@ async def process_task(client, status_msg, user_id):
                 dl.update()
                 if dl.status == 'error': await status_msg.edit("❌ Torrent Error."); return
                 
-                # 📊 PRO DASHBOARD LOGIC
                 if dl.total_length > 0:
                     done = dl.completed_length
                     total = dl.total_length
                     percent = (done / total) * 100
                     speed = humanbytes(dl.download_speed)
                     
-                    # Create Visual Bar [■■■■□□□□□□]
                     bar_len = 10
                     filled = int(percent / 10)
                     bar = "■" * filled + "□" * (bar_len - filled)
@@ -245,7 +242,12 @@ async def process_task(client, status_msg, user_id):
                 async with sess.get(url) as resp:
                     with open(final_path, 'wb') as f:
                         while True:
-                            chunk = await resp.content.read(1024*1024); if not chunk: break; f.write(chunk)
+                            # --- FIXED BLOCK START ---
+                            chunk = await resp.content.read(1024*1024)
+                            if not chunk: 
+                                break
+                            f.write(chunk)
+                            # --- FIXED BLOCK END ---
 
         # RENAME & UPLOAD
         if user_id not in TASKS: return
