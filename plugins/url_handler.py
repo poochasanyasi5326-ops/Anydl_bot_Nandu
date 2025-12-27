@@ -1,72 +1,73 @@
-import os
-import time
-import asyncio
 from pyrogram import Client, filters
-from yt_dlp import YoutubeDL
-from auth import owner_only
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import time
+import os
+import aiohttp
+from helper_funcs.display import progress_for_pyrogram
 
-# Progress Bar Logic
-async def progress_hook(d, status_msg, last_edit_time):
-    if d['status'] == 'downloading':
-        try:
-            now = time.time()
-            if now - last_edit_time[0] > 5:  # Update every 5 seconds
-                percent = d.get('_percent_str', 'N/A')
-                speed = d.get('_speed_str', 'N/A')
-                await status_msg.edit_text(f"⬇️ **Downloading...**\n📊 Progress: {percent}\n🚀 Speed: {speed}")
-                last_edit_time[0] = now
-        except:
-            pass
-
-# Handle HTTP/HTTPS Links
-@Client.on_message(filters.regex(r"^https?://") & filters.private & owner_only())
-async def download_url(client, message):
+@Client.on_message(filters.private & (filters.regex(r'^http') | filters.regex(r'^magnet')))
+async def download_handler(client, message):
     url = message.text.strip()
-    status_msg = await message.reply_text("🔎 **Analyzing Link...**")
     
-    download_path = "downloads"
+    # Check for Rename (User sends: link | new_name.mp4)
+    custom_name = None
+    if "|" in url:
+        url, custom_name = url.split("|")
+        url = url.strip()
+        custom_name = custom_name.strip()
+
+    status_msg = await message.reply_text("🔎 Processing...", quote=True)
+    start_time = time.time()
+
+    # Define path
+    download_path = "downloads/"
     if not os.path.exists(download_path):
         os.makedirs(download_path)
-    
-    # yt-dlp Configuration
-    ydl_opts = {
-        'outtmpl': f'{download_path}/%(title)s.%(ext)s',
-        'noplaylist': True,
-        'quiet': True,
-        # 'format': 'best', # Auto-select best quality
-    }
 
-    last_edit_time = [0]
-
+    # Simple Direct Download Logic (For http links)
     try:
-        # 1. Download
-        await status_msg.edit_text("⬇️ **Starting Download...**")
-        
-        # We run this in a separate thread to not block the bot
-        loop = asyncio.get_event_loop()
-        file_info = await loop.run_in_executor(None, lambda: run_download(ydl_opts, url, status_msg, last_edit_time))
-        
-        filename = file_info['filename']
-        title = file_info.get('title', 'Downloaded File')
+        filename = custom_name if custom_name else url.split("/")[-1]
+        file_path = os.path.join(download_path, filename)
 
-        # 2. Upload
-        await status_msg.edit_text("🚀 **Uploading to Telegram...**")
+        await status_msg.edit(f"⬇️ Downloading: `{filename}`")
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    with open(file_path, 'wb') as f:
+                        while True:
+                            chunk = await resp.content.read(1024*1024) # 1MB chunks
+                            if not chunk: break
+                            f.write(chunk)
+                else:
+                    await status_msg.edit("❌ Error: Could not connect to link.")
+                    return
+
+        # Upload Logic
+        await status_msg.edit("📤 Uploading...")
         await client.send_document(
             chat_id=message.chat.id,
-            document=filename,
-            caption=f"✅ **Downloaded:** `{title}`",
-            force_document=True
+            document=file_path,
+            caption=f"**File:** `{filename}`",
+            progress=progress_for_pyrogram,
+            progress_args=("📤 Uploading...", status_msg, start_time),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("Rename ✏️", callback_data="rename_help")],
+                [InlineKeyboardButton("Cancel ❌", callback_data="cancel")]
+            ])
         )
         
-        # 3. Cleanup
-        os.remove(filename)
         await status_msg.delete()
+        os.remove(file_path) # Clean up
 
     except Exception as e:
-        await status_msg.edit_text(f"❌ **Error:** {str(e)}")
+        await status_msg.edit(f"❌ Error: {e}")
 
-def run_download(opts, url, msg, time_tracker):
-    with YoutubeDL(opts) as ydl:
-        # Note: We can't easily await inside the standard hook, so simple progress is used
-        info = ydl.extract_info(url, download=True)
-        return {'filename': ydl.prepare_filename(info), 'title': info.get('title')}
+# Button Handler
+@Client.on_callback_query()
+async def button_handler(client, callback_query):
+    data = callback_query.data
+    if data == "cancel":
+        await callback_query.message.edit("❌ Task Cancelled.")
+    elif data == "rename_help":
+        await callback_query.answer("To rename, send: Link | Name.mp4", show_alert=True)
