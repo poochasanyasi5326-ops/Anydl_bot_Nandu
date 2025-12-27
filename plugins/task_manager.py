@@ -200,8 +200,15 @@ async def process_task(client, status_msg, user_id):
             if "magnet:?" in url: 
                 for tr in TRACKERS: url += f"&tr={tr}"
             
-            dl = aria2.add_torrent(url) if os.path.isfile(url) else aria2.add_magnet(url)
+            # --- CRITICAL FIX START: Force download folder ---
+            dl_opts = {'dir': os.path.abspath(download_path)}
+            if os.path.isfile(url):
+                dl = aria2.add_torrent(url, options=dl_opts)
+            else:
+                dl = aria2.add_magnet(url, options=dl_opts)
             if os.path.isfile(url): os.remove(url)
+            # --- CRITICAL FIX END ---
+
             TASKS[user_id]["gid"] = dl.gid
             
             while not dl.is_complete:
@@ -222,16 +229,13 @@ async def process_task(client, status_msg, user_id):
                     except: pass
                 await asyncio.sleep(4)
             
-            # --- SAFE FILE FINDER ---
-            # Try to find file in download path
-            search_path = str(dl.files[0].path) if dl.files else "downloads/"
+            # Find file in the CORRECT folder now
+            search_path = str(dl.files[0].path) if dl.files else download_path
             final_path = find_largest_file(search_path)
             
-            # If still None, search the root download folder
             if not final_path:
-                final_path = find_largest_file("downloads/")
+                final_path = find_largest_file(download_path)
                 
-            # If STILL None (Empty torrent?), abort
             if not final_path:
                 await status_msg.edit("❌ **Error:** No valid file found in torrent.")
                 return
@@ -253,7 +257,6 @@ async def process_task(client, status_msg, user_id):
         # RENAME & UPLOAD
         if user_id not in TASKS: return
         
-        # Verify file exists before processing
         if not final_path or not os.path.exists(final_path):
              await status_msg.edit("❌ **Error:** Downloaded file disappeared.")
              return
