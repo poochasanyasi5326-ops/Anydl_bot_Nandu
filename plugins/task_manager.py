@@ -10,17 +10,33 @@ from helper_funcs.display import progress_for_pyrogram, humanbytes, time_formatt
 from helper_funcs.ffmpeg import take_screen_shot, get_metadata, generate_screenshots
 from plugins.command import USER_THUMBS
 
-# --- MEMORY ---
 TASKS = {}
 USER_PREFS = {}
 aria2 = aria2p.API(aria2p.Client(host="http://localhost", port=6800, secret=""))
+
+# --- HELPER: Find the actual movie file in a folder ---
+def find_largest_file(path):
+    if os.path.isfile(path):
+        return path
+    
+    # If it's a folder, look inside
+    largest_file = None
+    largest_size = 0
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            file_path = os.path.join(root, file)
+            file_size = os.path.getsize(file_path)
+            if file_size > largest_size:
+                largest_size = file_size
+                largest_file = file_path
+    return largest_file
 
 # --- 1. ENTRY POINT ---
 @Client.on_message(filters.private & (filters.regex(r'^http') | filters.regex(r'^magnet') | filters.document))
 async def incoming_task(client, message):
     user_id = message.from_user.id
     
-    # Handle Rename Input
+    # Handle Rename
     if user_id in TASKS and TASKS[user_id].get("state") == "waiting_for_name":
         TASKS[user_id]["custom_name"] = message.text.strip()
         TASKS[user_id]["state"] = "menu"
@@ -28,7 +44,7 @@ async def incoming_task(client, message):
         await show_dashboard(client, TASKS[user_id]["chat_id"], TASKS[user_id]["message_id"], user_id)
         return
 
-    # New Task Logic
+    # New Task
     url = None
     is_torrent = False
     
@@ -42,7 +58,6 @@ async def incoming_task(client, message):
         url = message.text.strip()
         if url.startswith("magnet"): is_torrent = True
 
-    # Inline Rename Check
     custom_name = None
     if url and "|" in url and not os.path.isfile(url):
         url, custom_name = url.split("|")
@@ -56,7 +71,7 @@ async def incoming_task(client, message):
         "mode": current_mode, "state": "menu", "chat_id": message.chat.id, "message_id": None
     }
 
-    sent_msg = await message.reply_text("🔄 **Initializing Dashboard...**", quote=True)
+    sent_msg = await message.reply_text("🔄 **Initializing...**", quote=True)
     TASKS[user_id]["message_id"] = sent_msg.id
     await show_dashboard(client, message.chat.id, sent_msg.id, user_id)
 
@@ -65,7 +80,7 @@ async def incoming_task(client, message):
 async def show_dashboard(client, chat_id, message_id, user_id):
     task = TASKS[user_id]
     mode_icon = "🎥 Streamable" if task["mode"] == "video" else "📂 Normal File"
-    name_display = task["custom_name"] if task["custom_name"] else "Default (Original)"
+    name_display = task["custom_name"] if task["custom_name"] else "Default"
     type_display = "🧲 Torrent" if task["is_torrent"] else "🔗 Direct Link"
 
     text = (
@@ -73,7 +88,7 @@ async def show_dashboard(client, chat_id, message_id, user_id):
         f"**Source:** {type_display}\n"
         f"**Name:** `{name_display}`\n"
         f"**Mode:** {mode_icon}\n\n"
-        f"👇 **Configure before starting:**"
+        f"👇 **Configure:**"
     )
 
     buttons = InlineKeyboardMarkup([
@@ -108,7 +123,7 @@ async def handle_buttons(client, query: CallbackQuery):
     elif data == "ask_rename":
         TASKS[user_id]["state"] = "waiting_for_name"
         await query.message.edit(
-            "📝 **Send me the new name now.**\n👇 Waiting for input...",
+            "📝 **Send me the new name now.**",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_to_menu")]])
         )
 
@@ -132,12 +147,16 @@ async def process_task(client, status_msg, user_id):
     download_path, start_time = "downloads/", time.time()
     if not os.path.exists(download_path): os.makedirs(download_path)
     final_file_path = None
+    
+    # Store the GID to clean up aria2 later
+    gid = None 
 
     try:
-        # --- DOWNLOAD ---
+        # --- A. DOWNLOAD PHASE ---
         if is_torrent:
             if os.path.isfile(url): download = aria2.add_torrent(url); os.remove(url)
             else: download = aria2.add_magnet(url)
+            gid = download.gid
             
             while not download.is_complete:
                 download.update()
@@ -154,11 +173,30 @@ async def process_task(client, status_msg, user_id):
                         )
                      except: pass
                 await asyncio.sleep(4)
-            final_file_path = str(download.files[0].path)
-            aria2.remove([download])
+            
+            # --- FIX: Find the actual movie file ---
+            # Aria2 might download a folder. We need to find the largest file inside it.
+            root_path = str(download.files[0].path) # This might be the folder OR the file
+            
+            # If aria2 returned a file path, check if it exists. If not, it might be a folder relative path.
+            if not os.path.exists(root_path):
+                # Try to look in the downloads folder based on the torrent name
+                possible_folder = os.path.join("downloads", download.name)
+                if os.path.exists(possible_folder):
+                    root_path = possible_folder
+            
+            final_file_path = find_largest_file(root_path)
+            
+            if not final_file_path or not os.path.exists(final_file_path):
+                # LAST RESORT: Scan the entire downloads folder for the largest recent file
+                final_file_path = find_largest_file("downloads/")
+                
+            if not final_file_path:
+                 await status_msg.edit("❌ Error: Could not find the video file after downloading.")
+                 return
             
         else:
-            # DIRECT LINK (Now with Speed & ETA!)
+            # DIRECT LINK
             filename = custom_name if custom_name else url.split("/")[-1]
             final_file_path = os.path.join(download_path, filename)
             
@@ -174,8 +212,6 @@ async def process_task(client, status_msg, user_id):
                             if not chunk: break
                             f.write(chunk)
                             downloaded += len(chunk)
-                            
-                            # Calculate Stats
                             now = time.time()
                             diff = now - start_time
                             if diff > 1 and (round(diff % 5.00) == 0 or downloaded == total_size):
@@ -192,19 +228,23 @@ async def process_task(client, status_msg, user_id):
                                     )
                                 except: pass
 
-        # --- RENAME & METADATA ---
+        # --- B. RENAME & METADATA ---
         if custom_name:
             folder = os.path.dirname(final_file_path)
             new_path = os.path.join(folder, custom_name)
-            os.rename(final_file_path, new_path)
-            final_file_path = new_path
+            try:
+                os.rename(final_file_path, new_path)
+                final_file_path = new_path
+            except:
+                pass # Rename failed, just use original name
+        
         filename = os.path.basename(final_file_path)
 
         await status_msg.edit("⚙️ **Processing Media...**")
         thumb_path = USER_THUMBS.get(user_id) if user_id in USER_THUMBS else await take_screen_shot(final_file_path, download_path, 10)
         width, height, duration = await get_metadata(final_file_path)
 
-        # --- UPLOAD ---
+        # --- C. UPLOAD PHASE ---
         await status_msg.edit("📤 **Uploading...**")
         
         if mode == "video" and filename.lower().endswith(('.mkv', '.mp4', '.webm', '.avi')):
@@ -232,6 +272,7 @@ async def process_task(client, status_msg, user_id):
         await status_msg.delete()
         if os.path.exists(final_file_path): os.remove(final_file_path)
         if thumb_path and "thumbs/" not in thumb_path and os.path.exists(thumb_path): os.remove(thumb_path)
+        if gid: aria2.remove([gid])
         del TASKS[user_id]
 
     except Exception as e:
