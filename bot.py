@@ -1,72 +1,55 @@
-import asyncio
+from pyrogram import Client
+from os import environ
 import logging
-import os
-from pyrogram import Client, filters
+from aiohttp import web
+import asyncio
 
-# Load Config
-from config import API_ID, API_HASH, BOT_TOKEN, LOG_LEVEL
-from auth import owner_only
-from cleanup import cleanup_loop
+# 1. Setup Logging
+logging.basicConfig(level=logging.INFO)
 
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format="%(levelname)s | %(message)s"
+# 2. Load Secrets
+API_ID = int(environ.get("API_ID", 0))
+API_HASH = environ.get("API_HASH")
+BOT_TOKEN = environ.get("BOT_TOKEN")
+PORT = int(environ.get("PORT", 8000)) # Koyeb expects Port 8000
+
+# 3. Define the Bot
+app = Client(
+    "anydl_bot_session",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN,
+    plugins=dict(root="plugins"),
+    ipv6=False,
+    in_memory=True
 )
 
-SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
+# 4. Define the Fake Web Server (The Fix)
+async def web_server():
+    async def handle(request):
+        return web.Response(text="Bot is Running!")
 
-# Initialize Client
-# We use "anydl_v3" to ensure a totally fresh connection path
-if SESSION_STRING:
-    print("🎟️ Found Session String! (Forcing IPv4...)")
-    app = Client(
-        "anydl_v3",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        session_string=SESSION_STRING,
-        plugins=dict(root="plugins"), 
-        ipv6=False,
-        in_memory=True
-    )
-else:
-    print("⚠️ No Session String found. Using Bot Token...")
-    app = Client(
-        "anydl_v3",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        bot_token=BOT_TOKEN,
-        plugins=dict(root="plugins"),
-        ipv6=False,
-        in_memory=True
-    )
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    print(f"🕸️ Fake Web Server started on Port {PORT}")
 
-@app.on_message(filters.private & filters.command("start") & owner_only())
-async def start(client, message):
-    await message.reply_text(
-        f"✅ **Bot is ONLINE!**\n"
-        f"🆔 Your ID: `{message.from_user.id}`\n\n"
-        "**Send me:**\n"
-        "1. A `.torrent` file\n"
-        "2. A YouTube/Direct Link"
-    )
-
-@app.on_message(filters.private & ~owner_only())
-async def unauthorized(client, message):
-    await message.reply_text(f"🔒 **Access Denied**\nYour ID: `{message.from_user.id}` is not in the Owner List.")
-
+# 5. Run Both Together
 async def main():
-    print("⚡ Starting Bot...")
-    try:
-        await app.start()
-        print("✅ Bot Started Successfully!")
-        
-        # We removed the crashing 'delete_webhook' line.
-        # The bot is now free to stay alive.
-        
-        asyncio.create_task(cleanup_loop())
-        await asyncio.Event().wait()
-    except Exception as e:
-        print(f"❌ CRITICAL ERROR: {e}")
+    print("⚡ Starting Bot + Web Server...")
+    await app.start()
+    await web_server() # Start the fake server
+    print("✅ Bot Started Successfully!")
+    await asyncio.Event().wait() # Keep running forever
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(main())
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"❌ Error: {e}")
