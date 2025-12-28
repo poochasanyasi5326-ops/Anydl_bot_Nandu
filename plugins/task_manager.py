@@ -12,7 +12,7 @@ from helper_funcs.ffmpeg import take_screen_shot
 aria2 = aria2p.API(aria2p.Client(host="http://localhost", port=6800, secret=""))
 RENAME_FLAGS = {} 
 
-# --- LINK ANALYZER (Menu Generator) ---
+# --- LINK ANALYZER ---
 async def get_yt_info(url):
     ydl_opts = {'quiet': True, 'cookiefile': 'cookies.txt'}
     try:
@@ -32,10 +32,12 @@ async def link_handler(client, message):
         info = await get_yt_info(url)
         if not info: return await status.edit("❌ Error fetching info.")
         
+        # FIX: Send ONLY the ID, not the full URL (Telegram 64-byte limit)
+        vid_id = info['id']
         btns = [
-            [InlineKeyboardButton(f"🎬 Stream Video ({humanbytes(info.get('filesize_approx',0))})", callback_data=f"yt_vid|{url}"),
-             InlineKeyboardButton("📁 As Document", callback_data=f"yt_doc|{url}")],
-            [InlineKeyboardButton("🎧 Audio Only", callback_data=f"yt_aud|{url}")],
+            [InlineKeyboardButton(f"🎬 Stream Video ({humanbytes(info.get('filesize_approx',0))})", callback_data=f"yt_vid|{vid_id}"),
+             InlineKeyboardButton("📁 As Document", callback_data=f"yt_doc|{vid_id}")],
+            [InlineKeyboardButton("🎧 Audio Only", callback_data=f"yt_aud|{vid_id}")],
             [InlineKeyboardButton("📝 Rename", callback_data="rename"),
              InlineKeyboardButton("✖️ Cancel", callback_data="cancel")]
         ]
@@ -55,7 +57,6 @@ async def link_handler(client, message):
             
             await status.edit("✅ Download Complete. Uploading...")
             
-            # UPLOAD LOGIC FOR MAGNETS
             for file in download.files:
                 if os.path.exists(file.path):
                     thumb = await get_thumbnail(message.from_user.id, file.path)
@@ -67,15 +68,18 @@ async def link_handler(client, message):
                         progress=progress_for_pyrogram,
                         progress_args=("Uploading", status, time.time())
                     )
-                    os.remove(file.path) # Clean up
+                    os.remove(file.path)
             await status.delete()
         except Exception as e: await status.edit(f"❌ Aria2 Error: {e}")
 
-# --- BUTTON HANDLERS (The Missing Part) ---
+# --- BUTTON HANDLERS ---
 @Client.on_callback_query(filters.regex(r"^yt_"))
 async def yt_button_handler(client, query: CallbackQuery):
-    mode, url = query.data.split("|")
-    await query.message.edit(f"⬇️ **Processing {mode}...**")
+    mode, vid_id = query.data.split("|") # FIX: Reconstruct URL from ID
+    url = f"https://www.youtube.com/watch?v={vid_id}"
+    
+    await query.answer(f"⬇️ Processing {mode}...")
+    await query.message.edit(f"⬇️ **Downloading...**")
     
     # Check for Rename
     custom_name = RENAME_FLAGS.get(query.from_user.id)
@@ -110,7 +114,7 @@ async def yt_button_handler(client, query: CallbackQuery):
             progress=progress_for_pyrogram,
             progress_args=("Uploading", query.message, time.time())
         )
-        os.remove(filename) # Auto-Clean
+        os.remove(filename)
     except Exception as e:
         await query.message.edit(f"❌ Error: {str(e)}")
 
@@ -121,9 +125,9 @@ async def get_thumbnail(user_id, file_path):
     return await take_screen_shot(file_path, "downloads", 5)
 
 @Client.on_callback_query(filters.regex("rename"))
-async def ask_rename(client, query):
+async def ask_rename(client, query: CallbackQuery):
+    await query.answer()
     await query.message.edit("📝 **Send new name (Text Only):**")
-    # Simple listener hack for demo; proper way needs conversation state
     RENAME_FLAGS[query.from_user.id] = "WAITING"
 
 @Client.on_message(filters.text & filters.private)
@@ -133,5 +137,6 @@ async def set_new_name(client, message):
         await message.reply_text(f"✅ Name set to: `{message.text}`. \nClick the download button now.")
 
 @Client.on_callback_query(filters.regex("cancel"))
-async def cancel_task(client, query):
+async def cancel_task(client, query: CallbackQuery):
+    await query.answer("Cancelled!")
     await query.message.edit("❌ Cancelled.")
