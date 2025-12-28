@@ -1,94 +1,69 @@
 from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import os
 
-# --- 🔒 SECURITY SETTINGS ---
-# YOUR ID (Owner)
-AUTH_USERS = [519459195] 
+# --- CONFIGURATION ---
+# Replace with your actual Telegram User ID
+OWNER_ID = 123456789  
+# Authorized users list
+AUTH_USERS = [OWNER_ID] 
 
-# Helper to check if user is allowed
+# Simple memory for thumbnails
+USER_THUMBS = {}
+
 def is_authorized(user_id):
     return user_id in AUTH_USERS
 
-# Store user settings in memory
-USER_THUMBS = {}
-
-# --- /start COMMAND ---
-@Client.on_message(filters.command("start"))
+@Client.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
     user_id = message.from_user.id
+    user_name = message.from_user.first_name
     
-    # 1. Check Authorization
+    # Determine Role
+    role = "👑 Owner" if user_id == OWNER_ID else "👤 Authorized User"
     if not is_authorized(user_id):
-        await message.reply_text(
-            f"⛔ **Access Denied**\n"
-            f"👤 **Your ID:** `{user_id}`\n"
-            f"⚠️ You are not authorized to use this bot.\n"
-            f"Contact the owner: @poocha"
-        )
-        return
+        role = "🚫 Unauthorized"
 
-    # 2. If Authorized (Owner)
-    await message.reply_text(
-        f"👋 **Welcome back, Boss!**\n\n"
-        f"👤 **Role:** 👑 Owner\n"
-        f"🆔 **ID:** `{user_id}`\n\n"
-        f"**🤖 System Status:** Online ✅\n"
-        f"**💾 Storage:** Secure\n\n"
-        f"👇 **What would you like to do?**\n"
-        f"Send a Link, Magnet, or File to start processing.\n"
-        f"Type /help to see all available commands."
+    welcome_text = (
+        f"👋 **Welcome to Anydl Bot, {user_name}!**\n\n"
+        f"✨ **Role:** `{role}`\n"
+        f"🤖 **Status:** Online & Ready\n\n"
+        "I can mirror links, leeach torrents, and download YouTube videos directly to Telegram."
     )
 
-# --- /help COMMAND ---
-@Client.on_message(filters.command("help"))
-async def help_command(client, message):
-    # Security Check
-    if not is_authorized(message.from_user.id):
-        return
+    buttons = [
+        [
+            InlineKeyboardButton("👨‍💻 Owner", url="https://t.me/your_username"),
+            InlineKeyboardButton("🆔 My ID", callback_data="show_id")
+        ],
+        [
+            InlineKeyboardButton("❓ Help & Commands", callback_data="show_help")
+        ]
+    ]
 
     await message.reply_text(
-        "📚 **Bot Command List**\n\n"
-        "**⚡ Core Functions:**\n"
-        "• **Upload:** Send any Link, Magnet, YouTube URL, or File.\n"
-        "• **Rename:** Use the Dashboard menu after sending a file.\n"
-        "• **Modes:** Switch between Video (Streamable) and Document (File).\n\n"
-        "**🛠️ Settings Commands:**\n"
-        "• `/start` - Check bot status and your ID.\n"
-        "• `/help` - Show this menu.\n"
-        "• `/set_thumb` - Reply to a photo to set it as your custom thumbnail.\n"
-        "• `/del_thumb` - Delete your current custom thumbnail.\n\n"
-        "**💡 Pro Tip:**\n"
-        "You can rename files simply by forwarding them to me!"
+        welcome_text,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        quote=True
     )
 
-# --- THUMBNAIL COMMANDS ---
-@Client.on_message(filters.command("set_thumb") & filters.reply)
-async def set_thumbnail(client, message):
-    if not is_authorized(message.from_user.id):
-        await message.reply_text("⚠️ Access Denied.")
-        return
+@Client.on_callback_query(filters.regex("show_id"))
+async def show_id_callback(client, query):
+    await query.answer(f"Your ID is: {query.from_user.id}", show_alert=True)
 
-    if message.reply_to_message.photo:
-        # Create folder if not exists
-        if not os.path.exists("thumbs"): os.makedirs("thumbs")
-        
-        path = await client.download_media(message.reply_to_message, file_name=f"thumbs/{message.from_user.id}.jpg")
-        USER_THUMBS[message.from_user.id] = path
-        await message.reply_text("✅ **Thumbnail Saved!**\nFuture uploads will use this cover image.")
-    else:
-        await message.reply_text("❌ **Error:** You must reply to a photo to set it.")
+@Client.on_callback_query(filters.regex("show_help"))
+async def help_callback(client, query):
+    help_text = (
+        "📖 **How to use me:**\n\n"
+        "1️⃣ **Send a Link:** Paste any Magnet, Torrent, or YouTube link.\n"
+        "2️⃣ **Choose Mode:** Select 'Stream' or 'Safe' via buttons.\n"
+        "3️⃣ **Commands:**\n"
+        "• /set_thumb - Reply to an image to save as thumbnail.\n"
+        "• /del_thumb - Delete your saved thumbnail."
+    )
+    await query.message.edit(help_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]]))
 
-@Client.on_message(filters.command("del_thumb"))
-async def delete_thumbnail(client, message):
-    if not is_authorized(message.from_user.id):
-        await message.reply_text("⚠️ Access Denied.")
-        return
-
-    user_id = message.from_user.id
-    if user_id in USER_THUMBS:
-        if os.path.exists(USER_THUMBS[user_id]):
-            os.remove(USER_THUMBS[user_id])
-        del USER_THUMBS[user_id]
-        await message.reply_text("🗑️ **Thumbnail Deleted.**\nReset to default auto-generated thumbnails.")
-    else:
-        await message.reply_text("❌ You don't have a custom thumbnail set.")
+@Client.on_callback_query(filters.regex("back_to_start"))
+async def back_to_start(client, query):
+    # This calls your start logic again to refresh the menu
+    await start_command(client, query.message)
