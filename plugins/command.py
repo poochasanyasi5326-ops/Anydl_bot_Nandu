@@ -1,3 +1,4 @@
+import os
 import random
 import shutil
 from pyrogram import Client, filters
@@ -38,11 +39,14 @@ async def show_help_callback(client, query: CallbackQuery):
         "📖 **AnyDL Bot Manual**\n\n"
         "**Available Commands:**\n"
         "• `/start` - Open the main control menu.\n"
-        "• `Paste Link` - Send any YouTube, Magnet, or Direct URL.\n\n"
+        "• `/setthumbnail` - Reply to a photo to save it as a permanent thumbnail.\n"
+        "• `/clearthumbnail` - Delete your custom thumbnail.\n"
+
         "**Features:**\n"
         "• **Rename**: Change filenames before the final upload.\n"
         "• **Audio Mode**: Extract MP3s from any video link.\n"
         "• **Storage**: You have ~35GB total space for processing.\n\n"
+        "• `Paste Link` - Send any YouTube, Magnet, or Direct URL.\n\n"
         "🧹 *Note: All files are automatically deleted after upload to save space.*"
     )
     await query.message.edit(
@@ -50,6 +54,38 @@ async def show_help_callback(client, query: CallbackQuery):
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]])
     )
     await query.answer()
+
+# --- Thumbnail Logic ---
+
+@Client.on_message(filters.command("setthumbnail") & filters.private)
+async def set_thumb(client, message):
+    if not is_authorized(message.from_user.id):
+        return
+    
+    if not message.reply_to_message or not message.reply_to_message.photo:
+        return await message.reply_text("❌ Please **reply** to a photo to set it as a thumbnail.")
+    
+    # Ensure downloads directory exists
+    if not os.path.exists("downloads"):
+        os.makedirs("downloads")
+        
+    thumb_path = os.path.join("downloads", f"{message.from_user.id}_thumb.jpg")
+    await message.reply_to_message.download(file_name=thumb_path)
+    await message.reply_text("✅ **Custom thumbnail saved!** It will be applied to all your future uploads.")
+
+@Client.on_message(filters.command("clearthumbnail") & filters.private)
+async def clear_thumb(client, message):
+    if not is_authorized(message.from_user.id):
+        return
+        
+    thumb_path = os.path.join("downloads", f"{message.from_user.id}_thumb.jpg")
+    if os.path.exists(thumb_path):
+        os.remove(thumb_path)
+        await message.reply_text("🗑️ **Custom thumbnail cleared.** Switching back to auto-generated thumbs.")
+    else:
+        await message.reply_text("❌ You don't have a custom thumbnail set.")
+
+# --- Disk & ID Logic ---
 
 @Client.on_callback_query(filters.regex("check_disk"))
 async def check_disk_callback(client, query: CallbackQuery):
@@ -65,7 +101,6 @@ async def check_disk_callback(client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex("back_to_start"))
 async def back_to_start(client, query: CallbackQuery):
-    # This takes the user back to the main menu
     owner_buttons = [
         [InlineKeyboardButton("📊 Disk Health", callback_data="check_disk")],
         [InlineKeyboardButton("❓ Help & Commands", callback_data="show_help")],
