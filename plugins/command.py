@@ -2,8 +2,7 @@ import shutil
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-# --- CONFIGURATION ---
-OWNER_ID = 519459195  
+OWNER_ID = 519459195  # Your ID
 AUTH_USERS = [OWNER_ID] 
 
 def is_authorized(user_id):
@@ -18,12 +17,11 @@ async def start_command(client, message):
         f"👋 **Welcome back, Boss!**\n\n"
         f"👤 **Role:** `{role}`\n"
         f"🆔 **ID:** `{user_id}`\n\n"
-        f"📟 **System Status:** Online ✅\n"
-        f"💾 **Storage:** Secure\n\n"
+        f"💾 **Storage:** 16 GB Capacity\n\n"
         "👇 **Select an option below:**"
     )
 
-    # Creating the Inline Keyboard
+    # Inline Keyboard Layout
     buttons = [
         [
             InlineKeyboardButton("👨‍💻 Owner", url="https://t.me/your_username"),
@@ -37,7 +35,7 @@ async def start_command(client, message):
 
     await message.reply_text(
         welcome_text,
-        reply_markup=InlineKeyboardMarkup(buttons), # This loads the keyboard
+        reply_markup=InlineKeyboardMarkup(buttons), # FIX: This loads the buttons
         quote=True
     )
 
@@ -45,8 +43,10 @@ async def start_command(client, message):
 async def check_disk_callback(client, query: CallbackQuery):
     total, used, free = shutil.disk_usage("/")
     free_gb = round(free / (2**30), 2)
-    status_text = f"📊 **Storage Status**\n\n✅ **Available:** `{free_gb} GB`\n📈 **Total Capacity:** 16 GB"
-    await query.message.edit(status_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]]))
+    await query.message.edit(
+        f"📊 **Storage Status**\n\n✅ **Available:** `{free_gb} GB`\n📈 **Total:** 16 GB",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]])
+    )
 
 @Client.on_callback_query(filters.regex("show_id"))
 async def show_id_callback(client, query: CallbackQuery):
