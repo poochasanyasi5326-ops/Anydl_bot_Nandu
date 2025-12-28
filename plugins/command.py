@@ -15,16 +15,6 @@ OWNER_MESSAGES = [
     "🛰 **GPS Locked.** Paste the link, Captain."
 ]
 
-# Funny 'Gatekeeper' messages for Unauthorized Users
-UNAUTH_MESSAGES = [
-    "🛑 **HALT!** You aren't my creator.",
-    "🕵️‍♂️ **Access Denied.** My owner told me about people like you.",
-    "🛡 **SYSTEM ERROR:** User is too cool for this bot.",
-    "🤫 **Psst...** I'm a private bot.",
-    "🚫 **Error 404: Permission Not Found.**",
-    "⚠️ **Warning:** Sarcasm levels too high for guest access."
-]
-
 def is_authorized(user_id):
     return user_id == OWNER_ID
 
@@ -32,26 +22,41 @@ def is_authorized(user_id):
 async def start_handler(client, message):
     user_id = message.from_user.id
     if not is_authorized(user_id):
-        unauth_text = random.choice(UNAUTH_MESSAGES)
-        unauth_buttons = [[
-            InlineKeyboardButton("🆔 Who am I?", callback_data="show_user_id"),
-            InlineKeyboardButton("👨‍💻 Complain to Boss", url="https://t.me/poocha")
-        ]]
-        return await message.reply_text(unauth_text, reply_markup=InlineKeyboardMarkup(unauth_buttons))
+        return await message.reply_text("🛑 **Access Denied.** This is a private bot.")
 
     welcome_text = random.choice(OWNER_MESSAGES)
     owner_buttons = [
         [InlineKeyboardButton("📊 Disk Health", callback_data="check_disk")],
+        [InlineKeyboardButton("❓ Help & Commands", callback_data="show_help")],
         [InlineKeyboardButton("🆔 My Secret ID", callback_data="show_user_id")]
     ]
     await message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(owner_buttons))
+
+@Client.on_callback_query(filters.regex("show_help"))
+async def show_help_callback(client, query: CallbackQuery):
+    help_text = (
+        "📖 **AnyDL Bot Manual**\n\n"
+        "**Available Commands:**\n"
+        "• `/start` - Open the main control menu.\n"
+        "• `Paste Link` - Send any YouTube, Magnet, or Direct URL.\n\n"
+        "**Features:**\n"
+        "• **Rename**: Change filenames before the final upload.\n"
+        "• **Audio Mode**: Extract MP3s from any video link.\n"
+        "• **Storage**: You have ~35GB total space for processing.\n\n"
+        "🧹 *Note: All files are automatically deleted after upload to save space.*"
+    )
+    await query.message.edit(
+        help_text, 
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]])
+    )
+    await query.answer()
 
 @Client.on_callback_query(filters.regex("check_disk"))
 async def check_disk_callback(client, query: CallbackQuery):
     total, used, free = shutil.disk_usage("/")
     storage_info = (
         f"📊 **System Storage Status**\n\n"
-        f"Total: `{humanbytes(total)}` (16GB Limit)\n"
+        f"Total: `{humanbytes(total)}` (Your instance limit)\n"
         f"Used: `{humanbytes(used)}`\n"
         f"Free: `{humanbytes(free)}`"
     )
@@ -60,7 +65,13 @@ async def check_disk_callback(client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex("back_to_start"))
 async def back_to_start(client, query: CallbackQuery):
-    await start_handler(client, query.message)
+    # This takes the user back to the main menu
+    owner_buttons = [
+        [InlineKeyboardButton("📊 Disk Health", callback_data="check_disk")],
+        [InlineKeyboardButton("❓ Help & Commands", callback_data="show_help")],
+        [InlineKeyboardButton("🆔 My Secret ID", callback_data="show_user_id")]
+    ]
+    await query.message.edit(random.choice(OWNER_MESSAGES), reply_markup=InlineKeyboardMarkup(owner_buttons))
 
 @Client.on_callback_query(filters.regex("show_user_id"))
 async def show_user_id(client, query: CallbackQuery):
