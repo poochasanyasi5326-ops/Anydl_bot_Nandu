@@ -2,7 +2,6 @@ import shutil
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-# Configuration using your specific ID
 OWNER_ID = 519459195  
 AUTH_USERS = [OWNER_ID] 
 
@@ -18,9 +17,9 @@ async def start_command(client, message):
         f"👋 **Welcome back, Boss!**\n\n"
         f"👤 **Role:** `{role}`\n"
         f"🆔 **ID:** `{user_id}`\n\n"
-        f"📟 **System Status:** Online ✅\n"
+        f"📟 **Status:** Online ✅\n"
         f"💾 **Storage:** 16 GB Capacity\n\n"
-        "👇 **Select an option below:**"
+        "👇 **Select an option:**"
     )
 
     # Inline Keyboard construction
@@ -37,7 +36,7 @@ async def start_command(client, message):
 
     await message.reply_text(
         welcome_text,
-        reply_markup=InlineKeyboardMarkup(buttons), # This parameter loads the buttons
+        reply_markup=InlineKeyboardMarkup(buttons), # FIX: Loads the buttons
         quote=True
     )
 
@@ -45,7 +44,6 @@ async def start_command(client, message):
 async def check_disk_callback(client, query: CallbackQuery):
     total, used, free = shutil.disk_usage("/")
     free_gb = round(free / (2**30), 2)
-    
     await query.message.edit(
         f"📊 **Storage Status**\n\n✅ **Available:** `{free_gb} GB`\n📈 **Total:** 16 GB",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]])
