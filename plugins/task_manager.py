@@ -1,142 +1,41 @@
-import os
-import time
-import asyncio
-import yt_dlp
-import aria2p
+import os, random, shutil, sys
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from helper_funcs.display import humanbytes, progress_for_pyrogram
-from helper_funcs.ffmpeg import take_screen_shot
+from helper_funcs.display import humanbytes
 
-# Initialize Aria2
-aria2 = aria2p.API(aria2p.Client(host="http://localhost", port=6800, secret=""))
-RENAME_FLAGS = {} 
+OWNER_ID = 519459195 
+OWNER_MESSAGES = ["🚀 System Online, Boss!", "🤖 Beep Boop. Your slave is ready.", "✨ Welcome back, Overlord."]
 
-# --- LINK ANALYZER ---
-async def get_yt_info(url):
-    ydl_opts = {'quiet': True, 'cookiefile': 'cookies.txt'}
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            return ydl.extract_info(url, download=False)
-    except: return None
+def is_authorized(user_id):
+    return user_id == OWNER_ID
 
-@Client.on_message(filters.regex(r'http|magnet|rt:') & filters.private)
-async def link_handler(client, message):
-    if message.from_user.id != 519459195: return 
-
-    url = message.text
-    status = await message.reply_text("🔎 **Analyzing Link...**")
-
-    # 1. YouTube Logic
-    if "youtube" in url or "youtu.be" in url:
-        info = await get_yt_info(url)
-        if not info: return await status.edit("❌ Error fetching info.")
-        
-        # FIX: Send ONLY the ID, not the full URL (Telegram 64-byte limit)
-        vid_id = info['id']
-        btns = [
-            [InlineKeyboardButton(f"🎬 Stream Video ({humanbytes(info.get('filesize_approx',0))})", callback_data=f"yt_vid|{vid_id}"),
-             InlineKeyboardButton("📁 As Document", callback_data=f"yt_doc|{vid_id}")],
-            [InlineKeyboardButton("🎧 Audio Only", callback_data=f"yt_aud|{vid_id}")],
-            [InlineKeyboardButton("📝 Rename", callback_data="rename"),
-             InlineKeyboardButton("✖️ Cancel", callback_data="cancel")]
+@Client.on_message(filters.command("start") & filters.private)
+async def start_handler(client, message):
+    user_id = message.from_user.id
+    if is_authorized(user_id):
+        owner_buttons = [
+            [InlineKeyboardButton("📊 Disk Health", callback_data="check_disk"),
+             InlineKeyboardButton("🖼️ View Thumb", callback_data="view_thumb")],
+            [InlineKeyboardButton("❓ Help & Commands", callback_data="show_help"),
+             InlineKeyboardButton("🔄 Reboot Bot", callback_data="reboot_bot")]
         ]
-        await status.edit(f"🎥 **{info.get('title', 'Unknown')}**", reply_markup=InlineKeyboardMarkup(btns))
-
-    # 2. Magnet Logic
-    elif "magnet:" in url:
-        try:
-            download = aria2.add_magnet(url)
-            await status.edit(f"⚡ **Magnet Added:** `{download.name}`\nwaiting for metadata...")
-            
-            while not download.is_complete:
-                download.update()
-                if download.status == 'error': return await status.edit("❌ Download Failed.")
-                await progress_for_pyrogram(download.completed_length, download.total_length, "Downloading Magnet", status, time.time())
-                await asyncio.sleep(5)
-            
-            await status.edit("✅ Download Complete. Uploading...")
-            
-            for file in download.files:
-                if os.path.exists(file.path):
-                    thumb = await get_thumbnail(message.from_user.id, file.path)
-                    await client.send_document(
-                        chat_id=message.chat.id,
-                        document=file.path,
-                        thumb=thumb,
-                        caption=f"📂 **{file.name}**",
-                        progress=progress_for_pyrogram,
-                        progress_args=("Uploading", status, time.time())
-                    )
-                    os.remove(file.path)
-            await status.delete()
-        except Exception as e: await status.edit(f"❌ Aria2 Error: {e}")
-
-# --- BUTTON HANDLERS ---
-@Client.on_callback_query(filters.regex(r"^yt_"))
-async def yt_button_handler(client, query: CallbackQuery):
-    mode, vid_id = query.data.split("|") # FIX: Reconstruct URL from ID
-    url = f"https://www.youtube.com/watch?v={vid_id}"
+        return await message.reply_text(random.choice(OWNER_MESSAGES), reply_markup=InlineKeyboardMarkup(owner_buttons))
     
-    await query.answer(f"⬇️ Processing {mode}...")
-    await query.message.edit(f"⬇️ **Downloading...**")
-    
-    # Check for Rename
-    custom_name = RENAME_FLAGS.get(query.from_user.id)
-    
-    ydl_opts = {
-        'outtmpl': f"downloads/{custom_name if custom_name else '%(title)s'}.%(ext)s",
-        'cookiefile': 'cookies.txt',
-        'quiet': True
-    }
+    # Guest Flow
+    guest_text = "🛑 **Access Denied.** This is a private bot.\n\n🆔 Your ID: `{}`".format(user_id)
+    await message.reply_text(guest_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👨‍💻 Contact Owner", url="https://t.me/poocha")]]))
 
-    if mode == "yt_aud":
-        ydl_opts['format'] = 'bestaudio/best'
-        ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3'}]
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            if mode == "yt_aud": filename = filename.rsplit(".", 1)[0] + ".mp3"
-
-        # Upload
-        thumb = await get_thumbnail(query.from_user.id, filename)
-        upload_func = client.send_video if mode == "yt_vid" else client.send_document
-        
-        await upload_func(
-            chat_id=query.message.chat.id,
-            video=filename if mode == "yt_vid" else None,
-            document=filename if mode != "yt_vid" else None,
-            audio=filename if mode == "yt_aud" else None,
-            caption=f"✅ **{os.path.basename(filename)}**",
-            thumb=thumb,
-            progress=progress_for_pyrogram,
-            progress_args=("Uploading", query.message, time.time())
-        )
-        os.remove(filename)
-    except Exception as e:
-        await query.message.edit(f"❌ Error: {str(e)}")
-
-# --- UTILS ---
-async def get_thumbnail(user_id, file_path):
-    custom = f"downloads/{user_id}_thumb.jpg"
-    if os.path.exists(custom): return custom
-    return await take_screen_shot(file_path, "downloads", 5)
-
-@Client.on_callback_query(filters.regex("rename"))
-async def ask_rename(client, query: CallbackQuery):
+@Client.on_callback_query(filters.regex("back_to_start"))
+async def back_to_start(client, query: CallbackQuery):
+    # FIX: Rebuild menu manually to avoid ID mismatch
+    owner_buttons = [[InlineKeyboardButton("📊 Disk Health", callback_data="check_disk"), InlineKeyboardButton("🖼️ View Thumb", callback_data="view_thumb")],
+                     [InlineKeyboardButton("❓ Help & Commands", callback_data="show_help"), InlineKeyboardButton("🔄 Reboot Bot", callback_data="reboot_bot")]]
+    await query.message.edit(random.choice(OWNER_MESSAGES), reply_markup=InlineKeyboardMarkup(owner_buttons))
     await query.answer()
-    await query.message.edit("📝 **Send new name (Text Only):**")
-    RENAME_FLAGS[query.from_user.id] = "WAITING"
 
-@Client.on_message(filters.text & filters.private)
-async def set_new_name(client, message):
-    if RENAME_FLAGS.get(message.from_user.id) == "WAITING":
-        RENAME_FLAGS[message.from_user.id] = message.text
-        await message.reply_text(f"✅ Name set to: `{message.text}`. \nClick the download button now.")
-
-@Client.on_callback_query(filters.regex("cancel"))
-async def cancel_task(client, query: CallbackQuery):
-    await query.answer("Cancelled!")
-    await query.message.edit("❌ Cancelled.")
+@Client.on_callback_query(filters.regex("reboot_bot"))
+async def reboot_handler(client, query):
+    await query.answer("🔄 Rebooting...", show_alert=True)
+    shutil.rmtree("downloads", ignore_errors=True)
+    os.makedirs("downloads", exist_ok=True)
+    os.execl(sys.executable, sys.executable, *sys.argv)
