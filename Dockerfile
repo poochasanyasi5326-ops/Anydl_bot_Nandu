@@ -1,20 +1,15 @@
 FROM python:3.10-slim
 
-# 1. Install System Tools (Essential for your bot)
-# FFmpeg = Video Thumbnails/Processing
-# Aria2 = Torrent Downloading
+# Install system dependencies
 RUN apt-get update && \
-    apt-get install -y ffmpeg aria2 && \
+    apt-get install -y ffmpeg aria2 curl && \
     rm -rf /var/lib/apt/lists/*
 
-# 2. Set the folder
 WORKDIR /app
-
-# 3. Copy your code into the container
 COPY . .
 
-# 4. Install Python Libraries
-RUN pip install --no-cache-dir -r requirements.txt
+# Install python dependencies
+RUN pip3 install --no-cache-dir -r requirements.txt
 
-# 5. Start the Bot
-CMD ["python", "bot.py"]
+# Start Aria2 in the background and then start the Bot
+CMD aria2c --enable-rpc --rpc-listen-all=false --rpc-listen-port=6800 --max-connection-per-server=10 --rpc-max-request-size=1024M --seed-time=0 --max-overall-upload-limit=1K & python3 main.py
