@@ -19,34 +19,49 @@ OWNER_MESSAGES = [
 def is_authorized(user_id):
     return user_id == OWNER_ID
 
-# --- Start Command Handler ---
+# --- Start Command ---
 @Client.on_message(filters.command("start") & filters.private)
 async def start_handler(client, message):
     user_id = message.from_user.id
     
-    # 9. Start Response (Authorized)
+    # 1. Authorized Owner Menu
     if is_authorized(user_id):
         welcome_text = random.choice(OWNER_MESSAGES)
         owner_buttons = [
             [InlineKeyboardButton("📊 Disk Health", callback_data="check_disk"),
-             InlineKeyboardButton("🖼️ View Thumb", callback_data="view_thumb")], # 1. View Thumb
+             InlineKeyboardButton("🖼️ View Thumb", callback_data="view_thumb")],
             [InlineKeyboardButton("❓ Help & Commands", callback_data="show_help"),
-             InlineKeyboardButton("🔄 Reboot Bot", callback_data="reboot_bot")], # 10. Reboot
+             InlineKeyboardButton("🔄 Reboot Bot", callback_data="reboot_bot")],
             [InlineKeyboardButton("🆔 My Secret ID", callback_data="show_user_id")]
         ]
         return await message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(owner_buttons))
 
-    # 9. Start Response (Unauthorized / Guest)
+    # 2. Guest Message
     guest_text = (
         "🛑 **Access Denied.**\n\n"
-        "This is a private bot reserved for the administrator. "
-        "Your request has been logged.\n\n"
+        "This is a private bot reserved for the administrator.\n"
         f"🆔 **Your ID:** `{user_id}`"
     )
     guest_buttons = [[InlineKeyboardButton("👨‍💻 Contact Owner", url="https://t.me/poocha")]]
     await message.reply_text(guest_text, reply_markup=InlineKeyboardMarkup(guest_buttons))
 
-# --- Help Menu ---
+# --- Navigation Handlers (FIXED) ---
+
+@Client.on_callback_query(filters.regex("back_to_start"))
+async def back_to_start(client, query: CallbackQuery):
+    # FIX: We manually rebuild the menu here. 
+    # Calling start_handler(query.message) would fail because query.message belongs to the BOT, not you.
+    welcome_text = random.choice(OWNER_MESSAGES)
+    owner_buttons = [
+        [InlineKeyboardButton("📊 Disk Health", callback_data="check_disk"),
+         InlineKeyboardButton("🖼️ View Thumb", callback_data="view_thumb")],
+        [InlineKeyboardButton("❓ Help & Commands", callback_data="show_help"),
+         InlineKeyboardButton("🔄 Reboot Bot", callback_data="reboot_bot")],
+        [InlineKeyboardButton("🆔 My Secret ID", callback_data="show_user_id")]
+    ]
+    await query.message.edit(welcome_text, reply_markup=InlineKeyboardMarkup(owner_buttons))
+    await query.answer() # Stops the loading animation
+
 @Client.on_callback_query(filters.regex("show_help"))
 async def show_help_callback(client, query: CallbackQuery):
     help_text = (
@@ -61,8 +76,43 @@ async def show_help_callback(client, query: CallbackQuery):
         "• **Rename/Cancel**: Buttons available for every task."
     )
     await query.message.edit(help_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]]))
+    await query.answer()
 
-# --- Feature 1: Thumbnail Management ---
+# --- Feature Handlers ---
+
+@Client.on_callback_query(filters.regex("check_disk"))
+async def check_disk_callback(client, query: CallbackQuery):
+    total, used, free = shutil.disk_usage("/")
+    storage_info = (f"📊 **System Storage Status**\n\nTotal: `{humanbytes(total)}`"
+                    f"\nUsed: `{humanbytes(used)}`"
+                    f"\nFree: `{humanbytes(free)}`")
+    await query.message.edit(storage_info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]]))
+    await query.answer()
+
+@Client.on_callback_query(filters.regex("view_thumb"))
+async def view_thumb(client, query):
+    path = f"downloads/{query.from_user.id}_thumb.jpg"
+    if os.path.exists(path):
+        await query.message.reply_photo(path, caption="🖼️ Current Custom Thumbnail")
+        # We delete the old menu to prevent clutter, forcing user to type /start again or we can send a new menu
+        # For smoother UX, let's just leave the photo there.
+    else:
+        await query.answer("❌ No custom thumbnail found.", show_alert=True)
+    await query.answer()
+
+@Client.on_callback_query(filters.regex("reboot_bot"))
+async def reboot_handler(client, query):
+    await query.answer("🔄 Rebooting...", show_alert=True)
+    await query.message.edit("🔄 **Rebooting...** Cleaning 35GB cache.")
+    shutil.rmtree("downloads", ignore_errors=True)
+    os.makedirs("downloads", exist_ok=True)
+    os.execl(sys.executable, sys.executable, *sys.argv)
+
+@Client.on_callback_query(filters.regex("show_user_id"))
+async def show_user_id(client, query: CallbackQuery):
+    await query.answer(f"Your ID: {query.from_user.id}", show_alert=True)
+
+# --- Commands ---
 @Client.on_message(filters.command("setthumbnail") & filters.private)
 async def set_thumb(client, message):
     if not is_authorized(message.from_user.id): return
@@ -82,46 +132,3 @@ async def clear_thumb(client, message):
         await message.reply_text("🗑️ Thumbnail Cleared.")
     else:
         await message.reply_text("❌ No thumbnail found.")
-
-@Client.on_callback_query(filters.regex("view_thumb"))
-async def view_thumb(client, query):
-    path = f"downloads/{query.from_user.id}_thumb.jpg"
-    if os.path.exists(path):
-        await query.message.reply_photo(path, caption="🖼️ Current Custom Thumbnail")
-    else:
-        await query.answer("❌ No custom thumbnail found.", show_alert=True)
-
-# --- Feature 10: Disk Reboot ---
-@Client.on_callback_query(filters.regex("reboot_bot"))
-async def reboot_handler(client, query):
-    await query.message.edit("🔄 **Rebooting...** Cleaning 35GB cache.")
-    shutil.rmtree("downloads", ignore_errors=True)
-    os.makedirs("downloads", exist_ok=True)
-    os.execl(sys.executable, sys.executable, *sys.argv)
-
-# --- Storage Check (MISSING IN YOUR CODE) ---
-@Client.on_callback_query(filters.regex("check_disk"))
-async def check_disk_callback(client, query: CallbackQuery):
-    total, used, free = shutil.disk_usage("/")
-    storage_info = (f"📊 **System Storage Status**\n\nTotal: `{humanbytes(total)}`"
-                    f"\nUsed: `{humanbytes(used)}`"
-                    f"\nFree: `{humanbytes(free)}`")
-    await query.message.edit(storage_info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]]))
-
-# --- Navigation (FIXED) ---
-@Client.on_callback_query(filters.regex("back_to_start"))
-async def back_to_start(client, query: CallbackQuery):
-    # We must explicitly rebuild the menu because query.message comes from the Bot, not the User.
-    welcome_text = random.choice(OWNER_MESSAGES)
-    owner_buttons = [
-        [InlineKeyboardButton("📊 Disk Health", callback_data="check_disk"),
-         InlineKeyboardButton("🖼️ View Thumb", callback_data="view_thumb")],
-        [InlineKeyboardButton("❓ Help & Commands", callback_data="show_help"),
-         InlineKeyboardButton("🔄 Reboot Bot", callback_data="reboot_bot")],
-        [InlineKeyboardButton("🆔 My Secret ID", callback_data="show_user_id")]
-    ]
-    await query.message.edit(welcome_text, reply_markup=InlineKeyboardMarkup(owner_buttons))
-
-@Client.on_callback_query(filters.regex("show_user_id"))
-async def show_user_id(client, query: CallbackQuery):
-    await query.answer(f"Your ID: {query.from_user.id}", show_alert=True)
