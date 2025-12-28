@@ -11,8 +11,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy all your bot files into the container
+# Copy all your bot files
 COPY . .
 
-# Launch Aria2 in the background and start the bot
-CMD aria2c --enable-rpc --rpc-listen-all=false --rpc-listen-port=6800 --max-connection-per-server=10 --seed-time=0 & python3 main.py
+# IMPORTANT: Launch through run.sh to ensure updates and background processes start correctly
+CMD ["bash", "run.sh"]
