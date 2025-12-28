@@ -6,20 +6,23 @@ from helper_funcs.display import humanbytes
 
 OWNER_ID = 519459195 
 
-# Rotating messages for the Owner
+# Sarcastic & Witty messages for the Owner
 OWNER_MESSAGES = [
-    "👋 **Welcome Boss!**\nSystem is ready for your links.",
-    "🚀 **All Systems Go!**\nI'm standing by for your next download.",
-    "🤖 **Ready for Duty!**\nPaste a link and let's get to work, Boss.",
-    "✨ **Welcome back!**\nEverything is clear. Send me a link to start."
+    "🚀 **System Online.** Ready to download the internet, or just that one movie again, Boss?",
+    "🤖 **Beep Boop.** Your digital slave is at your service. What’s the mission today?",
+    "✨ **Welcome back, Overlord.** The servers are humming and I've cleared the crumbs from the storage.",
+    "🎩 **At your service!** I'm essentially 42 lines of code and a lot of caffeine. Ready when you are.",
+    "🛰 **GPS Locked.** I’ve spotted your next download from space. Just paste the link, Captain."
 ]
 
-# Rotating messages for Unauthorized Users
+# Funny 'Gatekeeper' messages for Unauthorized Users
 UNAUTH_MESSAGES = [
-    "User, welcome to my bot. It fetchs links and downloads strictly for me.",
-    "Access Denied. This bot is a private tool built for my personal use.",
-    "Welcome! Note that this bot only processes downloads for its owner.",
-    "Hello! This is a private instance. All functions are locked to the owner."
+    "🛑 **HALT!** You aren't my creator. I don't talk to strangers... usually.",
+    "🕵️‍♂️ **Access Denied.** My owner told me about people like you. Please move along!",
+    "🛡 **SYSTEM ERROR:** User is too cool for this bot. (Just kidding, you're just not authorized).",
+    "🤫 **Psst...** I'm a private bot. Unless you're the Boss, I'm just a very expensive calculator.",
+    "🚫 **Error 404: Permission Not Found.** Have you tried being the person who built me?",
+    "⚠️ **Warning:** Sarcasm levels too high for guest access. Please log out."
 ]
 
 def is_authorized(user_id):
@@ -29,19 +32,19 @@ def is_authorized(user_id):
 async def start_handler(client, message):
     user_id = message.from_user.id
     
-    # 1. Logic for Unauthorized Users
+    # 1. Funny Logic for Unauthorized Users
     if not is_authorized(user_id):
         unauth_text = random.choice(UNAUTH_MESSAGES)
         unauth_buttons = [[
-            InlineKeyboardButton("🆔 My ID", callback_data="show_user_id"),
-            InlineKeyboardButton("👨‍💻 Contact Owner", url="https://t.me/poocha")
+            InlineKeyboardButton("🆔 Who am I?", callback_data="show_user_id"),
+            InlineKeyboardButton("👨‍💻 Complain to Boss", url="https://t.me/poocha")
         ]]
         return await message.reply_text(unauth_text, reply_markup=InlineKeyboardMarkup(unauth_buttons))
 
-    # 2. Logic for the Owner
+    # 2. Funny Logic for the Owner
     welcome_text = random.choice(OWNER_MESSAGES)
     owner_buttons = [
-        [InlineKeyboardButton("📊 Check Storage", callback_data="check_disk")],
-        [InlineKeyboardButton("🆔 My ID", callback_data="show_user_id")]
+        [InlineKeyboardButton("📊 Disk Health", callback_data="check_disk")],
+        [InlineKeyboardButton("🆔 My Secret ID", callback_data="show_user_id")]
     ]
     await message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(owner_buttons))
