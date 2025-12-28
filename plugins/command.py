@@ -1,4 +1,7 @@
-import os, random, shutil, sys
+import os
+import random
+import shutil
+import sys
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from helper_funcs.display import humanbytes
@@ -21,7 +24,6 @@ async def start_handler(client, message):
         ]
         return await message.reply_text(random.choice(OWNER_MESSAGES), reply_markup=InlineKeyboardMarkup(owner_buttons))
     
-    # Guest Message
     await message.reply_text("🛑 **Access Denied.**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👨‍💻 Contact Owner", url="https://t.me/poocha")]]))
 
 @Client.on_callback_query(filters.regex("back_to_start"))
@@ -37,12 +39,3 @@ async def reboot_handler(client, query):
     shutil.rmtree("downloads", ignore_errors=True)
     os.makedirs("downloads", exist_ok=True)
     os.execl(sys.executable, sys.executable, *sys.argv)
-
-@Client.on_message(filters.command("setthumbnail") & filters.private)
-async def set_thumb(client, message):
-    if not is_authorized(message.from_user.id): return
-    if not message.reply_to_message or not message.reply_to_message.photo:
-        return await message.reply_text("❌ Reply to a photo.")
-    path = f"downloads/{message.from_user.id}_thumb.jpg"
-    await message.reply_to_message.download(file_name=path)
-    await message.reply_text("✅ Thumbnail Saved!")
