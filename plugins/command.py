@@ -12,21 +12,18 @@ def is_authorized(user_id):
 @Client.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
     user_id = message.from_user.id
-    
-    # Identify Role
     role = "👑 Owner" if user_id == OWNER_ID else "👤 Authorized User"
-    if not is_authorized(user_id): role = "🚫 Guest"
-
+    
     welcome_text = (
         f"👋 **Welcome back, Boss!**\n\n"
         f"👤 **Role:** `{role}`\n"
         f"🆔 **ID:** `{user_id}`\n\n"
         f"📟 **System Status:** Online ✅\n"
         f"💾 **Storage:** Secure\n\n"
-        "👇 **What would you like to do?**"
+        "👇 **Select an option below:**"
     )
 
-    # THIS IS THE PART THAT WAS MISSING
+    # Creating the Inline Keyboard
     buttons = [
         [
             InlineKeyboardButton("👨‍💻 Owner", url="https://t.me/your_username"),
@@ -40,17 +37,15 @@ async def start_command(client, message):
 
     await message.reply_text(
         welcome_text,
-        reply_markup=InlineKeyboardMarkup(buttons), # This renders the buttons
+        reply_markup=InlineKeyboardMarkup(buttons), # This loads the keyboard
         quote=True
     )
-
-# --- HANDLERS FOR THE BUTTONS ---
 
 @Client.on_callback_query(filters.regex("check_disk"))
 async def check_disk_callback(client, query: CallbackQuery):
     total, used, free = shutil.disk_usage("/")
     free_gb = round(free / (2**30), 2)
-    status_text = f"📊 **Storage Status**\n\n✅ **Available:** `{free_gb} GB`\n📈 **Total:** 16 GB"
+    status_text = f"📊 **Storage Status**\n\n✅ **Available:** `{free_gb} GB`\n📈 **Total Capacity:** 16 GB"
     await query.message.edit(status_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]]))
 
 @Client.on_callback_query(filters.regex("show_id"))
