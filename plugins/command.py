@@ -4,7 +4,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQ
 from helper_funcs.display import humanbytes
 
 OWNER_ID = 519459195 
-OWNER_MESSAGES = ["🚀 System Online, Boss!", "🤖 Beep Boop. Your slave is ready.", "✨ Welcome back, Overlord."]
+OWNER_MESSAGES = ["🚀 System Online, Boss!", "🤖 Ready to work.", "✨ Welcome back!"]
 
 def is_authorized(user_id):
     return user_id == OWNER_ID
@@ -21,13 +21,11 @@ async def start_handler(client, message):
         ]
         return await message.reply_text(random.choice(OWNER_MESSAGES), reply_markup=InlineKeyboardMarkup(owner_buttons))
     
-    # Guest Flow
-    guest_text = "🛑 **Access Denied.** This is a private bot.\n\n🆔 Your ID: `{}`".format(user_id)
-    await message.reply_text(guest_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👨‍💻 Contact Owner", url="https://t.me/poocha")]]))
+    # Guest Message
+    await message.reply_text("🛑 **Access Denied.**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👨‍💻 Contact Owner", url="https://t.me/poocha")]]))
 
 @Client.on_callback_query(filters.regex("back_to_start"))
 async def back_to_start(client, query: CallbackQuery):
-    # FIX: Rebuild menu manually to avoid ID mismatch
     owner_buttons = [[InlineKeyboardButton("📊 Disk Health", callback_data="check_disk"), InlineKeyboardButton("🖼️ View Thumb", callback_data="view_thumb")],
                      [InlineKeyboardButton("❓ Help & Commands", callback_data="show_help"), InlineKeyboardButton("🔄 Reboot Bot", callback_data="reboot_bot")]]
     await query.message.edit(random.choice(OWNER_MESSAGES), reply_markup=InlineKeyboardMarkup(owner_buttons))
@@ -39,3 +37,12 @@ async def reboot_handler(client, query):
     shutil.rmtree("downloads", ignore_errors=True)
     os.makedirs("downloads", exist_ok=True)
     os.execl(sys.executable, sys.executable, *sys.argv)
+
+@Client.on_message(filters.command("setthumbnail") & filters.private)
+async def set_thumb(client, message):
+    if not is_authorized(message.from_user.id): return
+    if not message.reply_to_message or not message.reply_to_message.photo:
+        return await message.reply_text("❌ Reply to a photo.")
+    path = f"downloads/{message.from_user.id}_thumb.jpg"
+    await message.reply_to_message.download(file_name=path)
+    await message.reply_text("✅ Thumbnail Saved!")
