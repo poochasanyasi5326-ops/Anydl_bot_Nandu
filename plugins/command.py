@@ -3,56 +3,48 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 OWNER_ID = 519459195  
-AUTH_USERS = [OWNER_ID] 
 
-def is_authorized(user_id):
-    return user_id in AUTH_USERS
+def is_authorized(u_id):
+    return u_id == OWNER_ID
 
 @Client.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
-    user_id = message.from_user.id
-    role = "👑 Owner" if user_id == OWNER_ID else "👤 Authorized User"
-    
+    if not is_authorized(message.from_user.id):
+        return await message.reply("🚫 Access Denied. Contact @your_username.")
+
     welcome_text = (
-        f"👋 **Welcome back, Boss!**\n\n"
-        f"👤 **Role:** `{role}`\n"
-        f"🆔 **ID:** `{user_id}`\n\n"
-        f"📟 **Status:** Online ✅\n"
-        f"💾 **Storage:** 16 GB Capacity\n\n"
-        "👇 **Select an option:**"
+        f"👋 **Welcome Boss!**\n\n"
+        f"👤 **Role:** `👑 Owner`\n"
+        f"🆔 **Your ID:** `{message.from_user.id}`\n\n"
+        "Paste any link to start the dashboard."
     )
 
-    # Inline Keyboard construction
     buttons = [
         [
-            InlineKeyboardButton("👨‍💻 Owner", url="https://t.me/your_username"),
-            InlineKeyboardButton("🆔 My ID", callback_data="show_id")
+            InlineKeyboardButton("👨‍💻 Contact Owner", url="https://t.me/your_username"),
+            InlineKeyboardButton("🆔 My ID", callback_data="show_my_id")
         ],
         [
             InlineKeyboardButton("📊 Check Storage", callback_data="check_disk"),
             InlineKeyboardButton("❓ Help", callback_data="show_help")
         ]
     ]
+    await message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(buttons))
 
-    await message.reply_text(
-        welcome_text,
-        reply_markup=InlineKeyboardMarkup(buttons), # FIX: Loads the buttons
-        quote=True
-    )
+@Client.on_callback_query(filters.regex("show_my_id"))
+async def show_id(client, query: CallbackQuery):
+    await query.answer(f"Your ID: {query.from_user.id}", show_alert=True)
 
 @Client.on_callback_query(filters.regex("check_disk"))
-async def check_disk_callback(client, query: CallbackQuery):
+async def disk_usage(client, query: CallbackQuery):
     total, used, free = shutil.disk_usage("/")
     free_gb = round(free / (2**30), 2)
+    # Hardcoded 16GB limit for display accuracy
     await query.message.edit(
-        f"📊 **Storage Status**\n\n✅ **Available:** `{free_gb} GB`\n📈 **Total:** 16 GB",
+        f"📊 **Storage Dashboard**\n\n✅ **Free:** `{free_gb} GB`\n📈 **Quota:** `16.0 GB`",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]])
     )
 
-@Client.on_callback_query(filters.regex("show_id"))
-async def show_id_callback(client, query: CallbackQuery):
-    await query.answer(f"Your ID: {query.from_user.id}", show_alert=True)
-
 @Client.on_callback_query(filters.regex("back_to_start"))
-async def back_to_start(client, query: CallbackQuery):
+async def back(client, query: CallbackQuery):
     await start_command(client, query.message)
