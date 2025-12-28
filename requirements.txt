@@ -3,3 +3,4 @@ tgcrypto
 aria2p
 yt-dlp
 aiohttp
+ffmpeg-python
