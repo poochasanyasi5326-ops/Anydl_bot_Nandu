@@ -5,12 +5,12 @@ RUN apt-get update && apt-get install -y ffmpeg aria2 curl && rm -rf /var/lib/ap
 
 WORKDIR /app
 
-# Copy all files from your GitHub into the /app folder
+# Copy all files from your GitHub into the container
 COPY . .
 
-# Install libraries from requirements.txt
+# Install libraries
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Start Aria2 and the Bot. 
-# If your file is named bot.py, change 'main.py' to 'bot.py' below
+# Start Aria2 and the Bot
+# We use & to run Aria2 in the background so main.py can start
 CMD aria2c --enable-rpc --rpc-listen-all=false --rpc-listen-port=6800 --max-connection-per-server=10 --seed-time=0 & python3 main.py
