@@ -3,13 +3,13 @@ import asyncio
 from pyrogram import Client
 from aiohttp import web
 
-# Get credentials from Koyeb Environment Variables
+# Credentials from Environment Variables
 API_ID = int(os.environ.get("API_ID", "12345"))
 API_HASH = os.environ.get("API_HASH", "abcdef")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "123:abc")
 
 async def handle(request):
-    return web.Response(text="Bot is Alive! 🚀")
+    return web.Response(text="Bot is running! 🚀")
 
 async def start_web_server():
     app = web.Application()
@@ -26,7 +26,7 @@ class AnyDLBot(Client):
             api_id=API_ID,
             api_hash=API_HASH,
             bot_token=BOT_TOKEN,
-            plugins=dict(root="plugins"), # Loads your buttons/tasks
+            plugins=dict(root="plugins"), # Loads command.py and task_manager.py
             workers=50
         )
 
