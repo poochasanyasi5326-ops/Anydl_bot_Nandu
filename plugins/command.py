@@ -1,10 +1,7 @@
-import os
-import random
-import shutil
-import sys
+import os, random, shutil, sys
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from helper_funcs.display import humanbytes
+from helper_funcs.display import humanbytes # Valid import now
 
 OWNER_ID = 519459195 
 OWNER_MESSAGES = ["🚀 System Online, Boss!", "🤖 Ready to work.", "✨ Welcome back!"]
@@ -20,10 +17,11 @@ async def start_handler(client, message):
             [InlineKeyboardButton("📊 Disk Health", callback_data="check_disk"),
              InlineKeyboardButton("🖼️ View Thumb", callback_data="view_thumb")],
             [InlineKeyboardButton("❓ Help & Commands", callback_data="show_help"),
-             InlineKeyboardButton("🔄 Reboot Bot", callback_data="reboot_bot")]
+             InlineKeyboardButton("🔄 Reboot Bot", callback_data="reboot_bot")] # Requirement 10
         ]
         return await message.reply_text(random.choice(OWNER_MESSAGES), reply_markup=InlineKeyboardMarkup(owner_buttons))
     
+    # Requirement 9
     await message.reply_text("🛑 **Access Denied.**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👨‍💻 Contact Owner", url="https://t.me/poocha")]]))
 
 @Client.on_callback_query(filters.regex("back_to_start"))
