@@ -3,4 +3,4 @@ tgcrypto
 aria2p
 yt-dlp
 aiohttp
-ffmpeg-python
+# No need for ffmpeg-python if you call the system ffmpeg directly
