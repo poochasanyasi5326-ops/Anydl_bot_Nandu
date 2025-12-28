@@ -1,60 +1,58 @@
-import time, os, asyncio, aria2p, shutil, yt_dlp
+import os, time, asyncio, yt_dlp, aria2p, shutil
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from helper_funcs.display import humanbytes
-from helper_funcs.ffmpeg import take_screen_shot, get_metadata
-
-# CRITICAL: This matches the functions in your new command.py
 from plugins.command import OWNER_ID, is_authorized
 
+# Initialize Aria2
 aria2 = aria2p.API(aria2p.Client(host="http://localhost", port=6800, secret=""))
 TASKS = {}
 
-async def show_dashboard(client, chat_id, msg_id, user_id):
-    if user_id not in TASKS: return
-    t = TASKS[user_id]
-    name_display = t["new_name"] if t["new_name"] else "Default (Auto)"
-    
-    btn = [[InlineKeyboardButton("📝 Rename", callback_data="set_rename")],
-           [InlineKeyboardButton("🚀 Start Download", callback_data="start_dl")]]
-    
-    text = f"📦 **Task Dashboard**\n\n📂 **Custom Name:** `{name_display}`\n🔗 **Link:** `Detected`"
-    await client.edit_message_text(chat_id, msg_id, text, reply_markup=InlineKeyboardMarkup(btn))
-
 @Client.on_message(filters.private & filters.regex(r'http|magnet'))
-async def link_handler(client, message):
+async def handle_media(client, message):
     if not is_authorized(message.from_user.id): return
     
     url = message.text.strip()
-    sent = await message.reply_text("🔎 **Analyzing link...**")
+    sent = await message.reply_text("🔎 **Analyzing Link...**")
     
-    # Initialize task with Rename State
+    # Store initial task data
     TASKS[message.from_user.id] = {
-        "url": url, "new_name": None, "gid": None, "state": None, "message_id": sent.id
+        "url": url, "new_name": None, "msg_id": sent.id, "state": None
     }
-    await show_dashboard(client, message.chat.id, sent.id, message.from_user.id)
 
-@Client.on_callback_query(filters.regex("start_dl"))
-async def start_dl(client, query: CallbackQuery):
-    u_id = query.from_user.id
-    task = TASKS.get(u_id)
-    if not task: return
+    if "youtube.com" in url or "youtu.be" in url:
+        # YouTube Mastery: Get sizes for buttons
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            v_size = info.get('filesize_approx') or info.get('filesize') or 0
+            a_size = info.get('filesize_approx') or 0
+            
+            buttons = [
+                [InlineKeyboardButton(f"🎥 Video ({humanbytes(v_size)})", callback_data="dl_video")],
+                [InlineKeyboardButton(f"🎵 Audio Only ({humanbytes(a_size)})", callback_data="dl_audio")],
+                [InlineKeyboardButton("📝 Rename", callback_data="set_rename"), 
+                 InlineKeyboardButton("❌ Cancel", callback_data="cancel_dl")]
+            ]
+            await sent.edit(f"🎬 **YouTube:** `{info.get('title')[:50]}`\nSelect Format:", reply_markup=InlineKeyboardMarkup(buttons))
+    else:
+        # Torrent/Direct Dashboard
+        buttons = [[InlineKeyboardButton("📝 Rename", callback_data="set_rename")],
+                   [InlineKeyboardButton("🚀 Start Download", callback_data="start_dl")]]
+        await sent.edit("🧲 **Link Detected**\nChoose an action:", reply_markup=InlineKeyboardMarkup(buttons))
 
-    await query.message.edit("📡 **Connecting...**")
-    try:
-        # Download logic with 16GB limit awareness
-        dl = aria2.add_magnet(task["url"], options={'dir': '/app/downloads'})
-        task["gid"] = dl.gid
+# --- SMART RENAME LOGIC ---
+def apply_smart_rename(original_path, custom_name):
+    if not custom_name:
+        return original_path
         
-        while not dl.is_complete:
-            dl.update()
-            p = (dl.completed_length / dl.total_length * 100) if dl.total_length > 0 else 0
-            await query.message.edit(
-                f"⬇️ **Downloading:** `{round(p, 2)}%`\n⚡ Speed: `{humanbytes(dl.download_speed)}/s`",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Cancel", callback_data="cancel_dl")]])
-            )
-            await asyncio.sleep(5)
-
-        # Handle Rename before upload
-        file_path = dl.files[0].path
-        if
+    directory = os.path.dirname(original_path)
+    # Detect original extension (e.g., .mp4, .mkv)
+    _, extension = os.path.splitext(original_path)
+    
+    # If user didn't type the extension, add it automatically
+    if not custom_name.lower().endswith(extension.lower()):
+        custom_name += extension
+        
+    new_path = os.path.join(directory, custom_name)
+    os.rename(original_path, new_path)
+    return new_path
