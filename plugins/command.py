@@ -1,11 +1,27 @@
+import random
 import shutil
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from helper_funcs.display import humanbytes
 
-OWNER_ID = 519459195  # Your ID
+OWNER_ID = 519459195 
 
-# Function used by task_manager.py to block others
+# Rotating messages for the Owner
+OWNER_MESSAGES = [
+    "👋 **Welcome Boss!**\nSystem is ready for your links.",
+    "🚀 **All Systems Go!**\nI'm standing by for your next download.",
+    "🤖 **Ready for Duty!**\nPaste a link and let's get to work, Boss.",
+    "✨ **Welcome back!**\nEverything is clear. Send me a link to start."
+]
+
+# Rotating messages for Unauthorized Users
+UNAUTH_MESSAGES = [
+    "User, welcome to my bot. It fetchs links and downloads strictly for me.",
+    "Access Denied. This bot is a private tool built for my personal use.",
+    "Welcome! Note that this bot only processes downloads for its owner.",
+    "Hello! This is a private instance. All functions are locked to the owner."
+]
+
 def is_authorized(user_id):
     return user_id == OWNER_ID
 
@@ -13,48 +29,19 @@ def is_authorized(user_id):
 async def start_handler(client, message):
     user_id = message.from_user.id
     
-    # --- UNAUTHORIZED USER MESSAGE ---
+    # 1. Logic for Unauthorized Users
     if not is_authorized(user_id):
-        unauth_text = (
-            "User welcome to my bot\n"
-            "the bot basically works for me to fetch any sort of \n"
-            "links and download strictly made for me"
-        )
-        unauth_buttons = [
-            [
-                InlineKeyboardButton("🆔 My ID", callback_data="show_user_id"),
-                InlineKeyboardButton("👨‍💻 Contact Owner", url="https://t.me/poocha")
-            ]
-        ]
+        unauth_text = random.choice(UNAUTH_MESSAGES)
+        unauth_buttons = [[
+            InlineKeyboardButton("🆔 My ID", callback_data="show_user_id"),
+            InlineKeyboardButton("👨‍💻 Contact Owner", url="https://t.me/poocha")
+        ]]
         return await message.reply_text(unauth_text, reply_markup=InlineKeyboardMarkup(unauth_buttons))
 
-    # --- AUTHORIZED OWNER CONTENT ---
-    welcome_text = "👋 **Welcome Boss!**\nSystem is ready for your links."
+    # 2. Logic for the Owner
+    welcome_text = random.choice(OWNER_MESSAGES)
     owner_buttons = [
         [InlineKeyboardButton("📊 Check Storage", callback_data="check_disk")],
         [InlineKeyboardButton("🆔 My ID", callback_data="show_user_id")]
     ]
     await message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(owner_buttons))
-
-@Client.on_callback_query(filters.regex("show_user_id"))
-async def show_id_callback(client, query: CallbackQuery):
-    await query.answer(f"Your ID is: {query.from_user.id}", show_alert=True)
-
-@Client.on_callback_query(filters.regex("check_disk"))
-async def check_disk_callback(client, query: CallbackQuery):
-    # Live storage check for your 16GB limit
-    total, used, free = shutil.disk_usage("/")
-    storage_info = (
-        f"📊 **Storage Status**\n\n"
-        f"Total: `{humanbytes(total)}` (16GB Limit)\n"
-        f"Used: `{humanbytes(used)}`\n"
-        f"Free: `{humanbytes(free)}`"
-    )
-    await query.message.edit(storage_info, reply_markup=InlineKeyboardMarkup(
-        [[InlineKeyboardButton("🔙 Back", callback_data="back_to_start")]]
-    ))
-
-@Client.on_callback_query(filters.regex("back_to_start"))
-async def back_to_start(client, query: CallbackQuery):
-    # Returns the owner to the main menu
-    await start_handler(client, query.message)
