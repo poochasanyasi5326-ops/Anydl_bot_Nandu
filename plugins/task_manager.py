@@ -1,41 +1,40 @@
-import os, random, shutil, sys
+import os, time, asyncio, yt_dlp, aria2p
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from helper_funcs.display import humanbytes
+from helper_funcs.display import humanbytes, progress_for_pyrogram
 
-OWNER_ID = 519459195 
-OWNER_MESSAGES = ["🚀 System Online, Boss!", "🤖 Beep Boop. Your slave is ready.", "✨ Welcome back, Overlord."]
+aria2 = aria2p.API(aria2p.Client(host="http://localhost", port=6800, secret=""))
+RENAME_FLAGS = {}
 
-def is_authorized(user_id):
-    return user_id == OWNER_ID
+@Client.on_message(filters.regex(r'http|magnet|rt:') & filters.private)
+async def link_handler(client, message):
+    if message.from_user.id != 519459195: return 
+    url = message.text
+    status = await message.reply_text("🔎 Analyzing...")
 
-@Client.on_message(filters.command("start") & filters.private)
-async def start_handler(client, message):
-    user_id = message.from_user.id
-    if is_authorized(user_id):
-        owner_buttons = [
-            [InlineKeyboardButton("📊 Disk Health", callback_data="check_disk"),
-             InlineKeyboardButton("🖼️ View Thumb", callback_data="view_thumb")],
-            [InlineKeyboardButton("❓ Help & Commands", callback_data="show_help"),
-             InlineKeyboardButton("🔄 Reboot Bot", callback_data="reboot_bot")]
-        ]
-        return await message.reply_text(random.choice(OWNER_MESSAGES), reply_markup=InlineKeyboardMarkup(owner_buttons))
+    if "youtube" in url or "youtu.be" in url:
+        with yt_dlp.YoutubeDL({'quiet': True, 'cookiefile': 'cookies.txt'}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            vid_id = info['id']
+            btns = [
+                [InlineKeyboardButton(f"🎬 Stream Video", callback_data=f"yt_vid|{vid_id}"),
+                 InlineKeyboardButton("📁 Document", callback_data=f"yt_doc|{vid_id}")],
+                [InlineKeyboardButton("📝 Rename", callback_data="rename"), InlineKeyboardButton("✖️ Cancel", callback_data="cancel")]
+            ]
+            await status.edit(f"🎥 **{info.get('title')}**", reply_markup=InlineKeyboardMarkup(btns))
     
-    # Guest Flow
-    guest_text = "🛑 **Access Denied.** This is a private bot.\n\n🆔 Your ID: `{}`".format(user_id)
-    await message.reply_text(guest_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👨‍💻 Contact Owner", url="https://t.me/poocha")]]))
+    elif "magnet:" in url:
+        try:
+            download = aria2.add_magnet(url)
+            await status.edit(f"⚡ Magnet Added: `{download.name}`")
+            while not download.is_complete:
+                download.update()
+                await progress_for_pyrogram(download.completed_length, download.total_length, "Downloading Magnet", status, time.time())
+                await asyncio.sleep(5)
+            await status.edit("✅ Downloaded! Uploading...")
+        except Exception as e: await status.edit(f"❌ Error: {e}")
 
-@Client.on_callback_query(filters.regex("back_to_start"))
-async def back_to_start(client, query: CallbackQuery):
-    # FIX: Rebuild menu manually to avoid ID mismatch
-    owner_buttons = [[InlineKeyboardButton("📊 Disk Health", callback_data="check_disk"), InlineKeyboardButton("🖼️ View Thumb", callback_data="view_thumb")],
-                     [InlineKeyboardButton("❓ Help & Commands", callback_data="show_help"), InlineKeyboardButton("🔄 Reboot Bot", callback_data="reboot_bot")]]
-    await query.message.edit(random.choice(OWNER_MESSAGES), reply_markup=InlineKeyboardMarkup(owner_buttons))
-    await query.answer()
-
-@Client.on_callback_query(filters.regex("reboot_bot"))
-async def reboot_handler(client, query):
-    await query.answer("🔄 Rebooting...", show_alert=True)
-    shutil.rmtree("downloads", ignore_errors=True)
-    os.makedirs("downloads", exist_ok=True)
-    os.execl(sys.executable, sys.executable, *sys.argv)
+@Client.on_callback_query(filters.regex("cancel"))
+async def cancel_task(client, query):
+    await query.answer("Task Cancelled")
+    await query.message.edit("❌ Terminated.")
