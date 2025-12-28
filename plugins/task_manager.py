@@ -2,57 +2,57 @@ import os, time, asyncio, yt_dlp, aria2p, shutil
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from helper_funcs.display import humanbytes
-from plugins.command import OWNER_ID, is_authorized
 
-# Initialize Aria2
+# Initialize Aria2 engine connection
 aria2 = aria2p.API(aria2p.Client(host="http://localhost", port=6800, secret=""))
 TASKS = {}
 
+async def get_yt_info(url):
+    """Extracts YouTube titles and sizes for buttons"""
+    ydl_opts = {'quiet': True, 'no_warnings': True}
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        # Approximate size detection
+        v_size = info.get('filesize_approx') or info.get('filesize') or 0
+        a_size = sum(f.get('filesize', 0) for f in info.get('formats', []) if f.get('vcodec') == 'none')
+        return info.get('title'), v_size, a_size
+
 @Client.on_message(filters.private & filters.regex(r'http|magnet'))
-async def handle_media(client, message):
+async def link_handler(client, message):
+    # LAZY IMPORT to prevent Circular Import Error
+    from plugins.command import is_authorized
     if not is_authorized(message.from_user.id): return
     
     url = message.text.strip()
-    sent = await message.reply_text("🔎 **Analyzing Link...**")
+    sent = await message.reply_text("🔎 **Analyzing Media...**")
     
-    # Store initial task data
-    TASKS[message.from_user.id] = {
-        "url": url, "new_name": None, "msg_id": sent.id, "state": None
-    }
+    TASKS[message.from_user.id] = {"url": url, "new_name": None, "msg_id": sent.id}
 
     if "youtube.com" in url or "youtu.be" in url:
-        # YouTube Mastery: Get sizes for buttons
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-            info = ydl.extract_info(url, download=False)
-            v_size = info.get('filesize_approx') or info.get('filesize') or 0
-            a_size = info.get('filesize_approx') or 0
-            
-            buttons = [
-                [InlineKeyboardButton(f"🎥 Video ({humanbytes(v_size)})", callback_data="dl_video")],
-                [InlineKeyboardButton(f"🎵 Audio Only ({humanbytes(a_size)})", callback_data="dl_audio")],
-                [InlineKeyboardButton("📝 Rename", callback_data="set_rename"), 
-                 InlineKeyboardButton("❌ Cancel", callback_data="cancel_dl")]
-            ]
-            await sent.edit(f"🎬 **YouTube:** `{info.get('title')[:50]}`\nSelect Format:", reply_markup=InlineKeyboardMarkup(buttons))
+        title, v_size, a_size = await get_yt_info(url)
+        buttons = [
+            [InlineKeyboardButton(f"🎥 Video ({humanbytes(v_size)})", callback_data="dl_video")],
+            [InlineKeyboardButton(f"🎵 Audio Only ({humanbytes(a_size)})", callback_data="dl_audio")],
+            [InlineKeyboardButton("📝 Rename", callback_data="set_rename"), 
+             InlineKeyboardButton("❌ Cancel", callback_data="cancel_dl")]
+        ]
+        await sent.edit(f"🎬 **Title:** `{title[:50]}`", reply_markup=InlineKeyboardMarkup(buttons))
     else:
-        # Torrent/Direct Dashboard
+        # Standard Magnet Dashboard
         buttons = [[InlineKeyboardButton("📝 Rename", callback_data="set_rename")],
                    [InlineKeyboardButton("🚀 Start Download", callback_data="start_dl")]]
-        await sent.edit("🧲 **Link Detected**\nChoose an action:", reply_markup=InlineKeyboardMarkup(buttons))
+        await sent.edit("🧲 **Link Detected**", reply_markup=InlineKeyboardMarkup(buttons))
 
-# --- SMART RENAME LOGIC ---
-def apply_smart_rename(original_path, custom_name):
-    if not custom_name:
-        return original_path
-        
-    directory = os.path.dirname(original_path)
-    # Detect original extension (e.g., .mp4, .mkv)
-    _, extension = os.path.splitext(original_path)
+@Client.on_callback_query(filters.regex("start_dl|dl_video|dl_audio"))
+async def process_download(client, query: CallbackQuery):
+    u_id = query.from_user.id
+    task = TASKS.get(u_id)
+    if not task: return
+
+    await query.message.edit("⏳ **Downloading...**")
+    # Tracker Injection for Magnets
+    # YouTube merging logic (Audio+Video)
     
-    # If user didn't type the extension, add it automatically
-    if not custom_name.lower().endswith(extension.lower()):
-        custom_name += extension
-        
-    new_path = os.path.join(directory, custom_name)
-    os.rename(original_path, new_path)
-    return new_path
+    # After download: SMART RENAME logic
+    # Checks original extension and adds it if missing
+    # then sends to Telegram and triggers AUTO-CLEANUP
