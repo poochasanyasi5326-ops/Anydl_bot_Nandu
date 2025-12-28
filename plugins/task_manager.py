@@ -1,8 +1,13 @@
-import os, time, asyncio, yt_dlp, aria2p
+import os
+import time
+import asyncio
+import yt_dlp
+import aria2p
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from helper_funcs.display import humanbytes, progress_for_pyrogram
 
+# Use the same port defined in your run.sh
 aria2 = aria2p.API(aria2p.Client(host="http://localhost", port=6800, secret=""))
 RENAME_FLAGS = {}
 
