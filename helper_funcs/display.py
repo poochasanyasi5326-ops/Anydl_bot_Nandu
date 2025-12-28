@@ -2,6 +2,7 @@ import time
 import math
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+# Requirement 6: Progress Tracker Logic
 def humanbytes(size):
     if not size: return "0 B"
     for unit in ['','Ki','Mi','Gi','Ti']:
