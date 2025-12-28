@@ -36,4 +36,7 @@ class AnyDLBot(Client):
         print("✅ Bot and Web Server Started!")
 
 if __name__ == "__main__":
+    # Ensure the downloads directory exists for your 35GB storage
+    if not os.path.exists("downloads"):
+        os.makedirs("downloads")
     AnyDLBot().run()
