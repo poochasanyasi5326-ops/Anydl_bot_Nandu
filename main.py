@@ -1,6 +1,6 @@
 import os
+import asyncio
 from pyrogram import Client
-from pyrogram.idle import idle
 from plugins.command import register
 
 print("🚀 AnyDL starting (main.py)")
@@ -12,6 +12,12 @@ app = Client(
     bot_token=os.getenv("BOT_TOKEN")
 )
 
-app.start()
-register(app)
-idle()
+async def main():
+    await app.start()
+    register(app)
+    print("✅ Bot started successfully")
+    # keep process alive (version-safe)
+    while True:
+        await asyncio.sleep(3600)
+
+asyncio.run(main())
