@@ -3,7 +3,7 @@ import asyncio
 from pyrogram import Client
 from plugins.command import register
 
-print("🚀 AnyDL starting (main.py)")
+print("🚀 AnyDL starting (main.py – async loop)")
 
 app = Client(
     "anydl",
@@ -16,7 +16,6 @@ async def main():
     await app.start()
     register(app)
     print("✅ Bot started successfully")
-    # keep process alive (version-safe)
     while True:
         await asyncio.sleep(3600)
 
