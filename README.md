@@ -1,8 +1,4 @@
-Here is a **clean, honest, production-ready README.md** that matches **exactly what your bot does today**, enforces your owner ID, and does **not overpromise** anything.
 
-You can **copy-paste this as `README.md`** in your GitHub repo.
-
----
 
 # AnyDL – Personal Telegram Downloader Bot
 
