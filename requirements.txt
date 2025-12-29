@@ -1,7 +1,6 @@
 pyrogram
 tgcrypto
-aria2p
 yt-dlp
-aiohttp
-aiofiles
-python-magic
+requests
+fastapi
+uvicorn
