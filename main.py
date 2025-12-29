@@ -2,21 +2,22 @@ import asyncio
 from pyrogram import Client
 from fastapi import FastAPI
 import uvicorn
+import os
 
 from plugins.command import register_handlers
 
 BOT = Client(
     "anydl",
-    api_id=int(__import__("os").getenv("API_ID")),
-    api_hash=__import__("os").getenv("API_HASH"),
-    bot_token=__import__("os").getenv("BOT_TOKEN")
+    api_id=int(os.getenv("API_ID")),
+    api_hash=os.getenv("API_HASH"),
+    bot_token=os.getenv("BOT_TOKEN")
 )
 
 app = FastAPI()
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"ok": True}
 
 async def main():
     register_handlers(BOT)
