@@ -1,21 +1,16 @@
 import subprocess, os
 
-def is_streamable(ext: str) -> bool:
-    return ext.lower() in [".mp4", ".mkv", ".webm"]
+def is_streamable(path):
+    return os.path.splitext(path)[1].lower() in [".mp4", ".mkv", ".webm"]
 
-def generate_screenshots(video_path: str, output_dir: str):
-    os.makedirs(output_dir, exist_ok=True)
-    timestamps = ["00:00:03", "00:00:08", "00:00:15"]
-    shots = []
-
-    for i, ts in enumerate(timestamps, 1):
-        out = os.path.join(output_dir, f"screenshot_{i}.jpg")
-        subprocess.run(
-            ["ffmpeg", "-y", "-ss", ts, "-i", video_path, "-vframes", "1", "-q:v", "4", out],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
+def screenshots(video, outdir):
+    os.makedirs(outdir, exist_ok=True)
+    times = ["00:00:03","00:00:08","00:00:15"]
+    shots=[]
+    for i,t in enumerate(times):
+        out=f"{outdir}/shot{i}.jpg"
+        subprocess.run(["ffmpeg","-y","-ss",t,"-i",video,"-frames:v","1",out],
+                       stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         if os.path.exists(out):
             shots.append(out)
-
     return shots
