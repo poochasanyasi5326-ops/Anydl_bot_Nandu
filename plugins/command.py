@@ -1,72 +1,110 @@
 from pyrogram import filters
-from pyrogram.types import InlineKeyboardMarkup,InlineKeyboardButton
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from plugins.task_manager import run, busy, cancel
+from helper_funcs.ui import close_keyboard
 import shutil, os
-from plugins.task_manager import yt_formats, run, busy, cancel
 
-OWNER=519459195
-STATE={}
+OWNER = 519459195
+STATE = {}
+WAIT = {}
 
-def pref(uid):
-    return STATE.setdefault(uid,{
-        "stream":True,
-        "shots":True,
-        "thumb":None
+def prefs(uid):
+    return STATE.setdefault(uid, {
+        "stream": True,
+        "shots": True,
+        "thumb": None
     })
+
+def main_kb():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📥 Help", callback_data="help"),
+         InlineKeyboardButton("🖼 Thumbnail", callback_data="thumb")],
+        [InlineKeyboardButton("🎞 Stream", callback_data="stream"),
+         InlineKeyboardButton("📸 Screens", callback_data="shots")],
+        [InlineKeyboardButton("📊 Disk", callback_data="disk"),
+         InlineKeyboardButton("🔄 Reboot", callback_data="reboot")]
+    ])
 
 def register(bot):
 
     @bot.on_message(filters.command("start"))
-    async def start(_,m):
-        if m.from_user.id!=OWNER:
+    async def start(_, m):
+        if m.from_user.id != OWNER:
             await m.reply(
                 f"🚫 Private bot\n🆔 `{m.from_user.id}`",
                 reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("Contact Owner",url="https://t.me/poocha")]]
+                    [[InlineKeyboardButton("Contact Owner", url="https://t.me/poocha")]]
                 )
             )
             return
-        await m.reply(
-            "AnyDL Ready",
+        await m.reply("AnyDL Ready", reply_markup=main_kb())
+
+    @bot.on_callback_query(filters.regex("^help$"))
+    async def help(_, q):
+        await q.message.edit(
+            "📥 **How to use AnyDL**\n\n"
+            "• Send or forward a file\n"
+            "• Send links (YouTube / direct)\n"
+            "• Rename or use default\n"
+            "• Cancel anytime",
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("❌ Close", callback_data="close")]]
+            )
+        )
+
+    @bot.on_callback_query(filters.regex("^thumb$"))
+    async def thumb(_, q):
+        await q.message.edit(
+            "🖼 Thumbnail",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("Toggle Stream",callback_data="s"),
-                 InlineKeyboardButton("Toggle Shots",callback_data="p")],
-                [InlineKeyboardButton("Disk",callback_data="d"),
-                 InlineKeyboardButton("Reboot",callback_data="r")]
+                [InlineKeyboardButton("👁 View", callback_data="t_view"),
+                 InlineKeyboardButton("➕ Set", callback_data="t_set")],
+                [InlineKeyboardButton("❌ Clear", callback_data="t_clear")],
+                [InlineKeyboardButton("❌ Close", callback_data="close")]
             ])
         )
 
-    @bot.on_callback_query(filters.regex("^s$"))
-    async def s(_,q):
-        pref(q.from_user.id)["stream"]^=True
+    @bot.on_callback_query(filters.regex("^close$"))
+    async def close(_, q):
+        await close_keyboard(q.message)
+
+    @bot.on_callback_query(filters.regex("^stream$"))
+    async def stream(_, q):
+        prefs(q.from_user.id)["stream"] ^= True
         await q.answer("Toggled")
 
-    @bot.on_callback_query(filters.regex("^p$"))
-    async def p(_,q):
-        pref(q.from_user.id)["shots"]^=True
+    @bot.on_callback_query(filters.regex("^shots$"))
+    async def shots(_, q):
+        prefs(q.from_user.id)["shots"] ^= True
         await q.answer("Toggled")
 
-    @bot.on_callback_query(filters.regex("^d$"))
-    async def d(_,q):
-        t,u,f=shutil.disk_usage("/")
-        await q.message.edit(f"Disk: {u//1e9}GB used")
+    @bot.on_callback_query(filters.regex("^disk$"))
+    async def disk(_, q):
+        t,u,f = shutil.disk_usage("/")
+        await q.answer(f"Used: {u//1e9}GB", show_alert=True)
 
-    @bot.on_callback_query(filters.regex("^r$"))
-    async def r(_,q):
+    @bot.on_callback_query(filters.regex("^reboot$"))
+    async def reboot(_, q):
         os._exit(0)
 
-    @bot.on_message(filters.private & filters.text)
-    async def link(_,m):
-        if m.from_user.id!=OWNER or busy(): return
-        p=pref(m.from_user.id)
+    @bot.on_message(filters.private & filters.document)
+    async def forwarded(_, m):
+        WAIT[m.from_user.id] = m
+        await m.reply(
+            "Rename file?",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Default", callback_data="r_def"),
+                 InlineKeyboardButton("✏️ Rename", callback_data="r_custom")],
+                [InlineKeyboardButton("❌ Close", callback_data="close")]
+            ])
+        )
 
-        if "youtu" in m.text:
-            btn=[[InlineKeyboardButton(f"{l} {s}MB",callback_data=f"yt|{m.text}|{i}")]
-                 for i,l,s in yt_formats(m.text)]
-            await m.reply("Select format",reply_markup=InlineKeyboardMarkup(btn))
-        else:
-            await run(m.text,"direct",None,p,m)
+    @bot.on_callback_query(filters.regex("^r_def$"))
+    async def rdef(_, q):
+        m = WAIT.pop(q.from_user.id)
+        await m.download(file_name=m.document.file_name)
 
-    @bot.on_callback_query(filters.regex("^yt\\|"))
-    async def yt(_,q):
-        _,url,fid=q.data.split("|")
-        await run(url,"youtube",fid,pref(q.from_user.id),q.message)
+    @bot.on_callback_query(filters.regex("^cancel:"))
+    async def c(_, q):
+        cancel()
+        await q.message.edit("❌ Cancelled")
