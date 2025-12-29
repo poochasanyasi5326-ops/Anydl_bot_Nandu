@@ -1,5 +1,6 @@
 import os
 from pyrogram import Client
+from pyrogram.idle import idle
 from plugins.command import register
 
 app = Client(
@@ -11,4 +12,4 @@ app = Client(
 
 app.start()
 register(app)
-app.idle()
+idle()
