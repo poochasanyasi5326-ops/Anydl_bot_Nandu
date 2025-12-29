@@ -1,6 +1,6 @@
-import os, uuid, subprocess, json, requests, asyncio
+import os, uuid, requests, asyncio, subprocess
+from helper_funcs.ui import progress
 from helper_funcs.ffmpeg import screenshots, is_streamable
-from helper_funcs.progress import update
 
 RD = os.getenv("REAL_DEBRID_API_KEY")
 TMP = "/tmp/anydl"
@@ -10,79 +10,67 @@ ACTIVE = None
 
 def busy(): return ACTIVE is not None
 def cancel(): 
-    global ACTIVE
-    if ACTIVE: ACTIVE["cancel"]=True
+    if ACTIVE: ACTIVE["stop"] = True
 
-def yt_formats(url):
-    info=json.loads(subprocess.check_output(["yt-dlp","-J",url]))
-    out=[]
-    for f in info["formats"]:
-        if not f.get("filesize"): continue
-        mb=round(f["filesize"]/1024/1024,1)
-        if f["vcodec"]!="none":
-            out.append((f["format_id"],f"{f.get('height','?')}p",mb))
-        elif f["acodec"]!="none":
-            out.append((f["format_id"],f"Audio {f.get('abr','?')}k",mb))
-    return out
+def rd_hosts():
+    return requests.get("https://api.real-debrid.com/rest/1.0/hosts").json()
 
-async def direct(url, jid):
-    r=requests.get(url,stream=True)
-    path=f"{TMP}/{jid}"
-    with open(path,"wb") as f:
-        for c in r.iter_content(1024*512):
-            if ACTIVE["cancel"]: raise Exception("cancel")
-            f.write(c)
-    return path
+def rd_supported(url):
+    host = url.split("/")[2].lower()
+    return host in rd_hosts()
 
 async def rd_unrestrict(url):
-    h={"Authorization":f"Bearer {RD}"}
-    r=requests.post("https://api.real-debrid.com/rest/1.0/unrestrict/link",
-                    headers=h,data={"link":url}).json()
+    r = requests.post(
+        "https://api.real-debrid.com/rest/1.0/unrestrict/link",
+        headers={"Authorization": f"Bearer {RD}"},
+        data={"link": url}
+    ).json()
     return r["download"]
 
-async def rd_torrent(magnet):
-    h={"Authorization":f"Bearer {RD}"}
-    r=requests.post("https://api.real-debrid.com/rest/1.0/torrents/addMagnet",
-                    headers=h,data={"magnet":magnet}).json()
-    tid=r["id"]
-    requests.post(f"https://api.real-debrid.com/rest/1.0/torrents/selectFiles/{tid}",
-                  headers=h,data={"files":"all"})
-    while True:
-        info=requests.get(f"https://api.real-debrid.com/rest/1.0/torrents/info/{tid}",headers=h).json()
-        if info["status"]=="downloaded": break
-        await asyncio.sleep(5)
-    link=info["links"][0]
-    return (await rd_unrestrict(link))
+async def http_download(url, path, msg, jid):
+    r = requests.get(url, stream=True)
+    total = int(r.headers.get("content-length", 0))
+    cur = 0
+    with open(path, "wb") as f:
+        for c in r.iter_content(1024*512):
+            if ACTIVE["stop"]:
+                raise Exception("cancel")
+            cur += len(c)
+            f.write(c)
+            await progress(msg, jid, "download", cur, total)
+    return path
 
-async def run(job, mode, data, prefs, msg):
+async def run(job, mode, fmt, prefs, msg, fname):
     global ACTIVE
-    jid=str(uuid.uuid4())
-    ACTIVE={"cancel":False}
-    try:
-        if mode=="youtube":
-            out=f"{TMP}/{jid}.%(ext)s"
-            subprocess.run(["yt-dlp","-f",data,"-o",out,job],check=True)
-            file=[f for f in os.listdir(TMP) if f.startswith(jid)][0]
-            path=f"{TMP}/{file}"
-        elif mode=="torrent":
-            link=await rd_torrent(job)
-            path=await direct(link,jid)
-        else:
-            link=await rd_unrestrict(job)
-            path=await direct(link,jid)
+    jid = str(uuid.uuid4())
+    ACTIVE = {"stop": False}
 
-        shots=[]
-        if prefs["shots"] and is_streamable(path):
-            shots=screenshots(path,f"{TMP}/{jid}_s")
+    try:
+        out = f"{TMP}/{fname}"
+
+        if mode == "youtube":
+            subprocess.run(
+                ["yt-dlp","-f",fmt,"-o",out,job],
+                check=True
+            )
+
+        elif mode == "direct":
+            link = await rd_unrestrict(job) if rd_supported(job) else job
+            await http_download(link, out, msg, jid)
+
+        shots = []
+        if prefs["shots"] and is_streamable(out):
+            shots = screenshots(out)
 
         await msg.reply_document(
-            path,
+            out,
             supports_streaming=prefs["stream"],
             thumb=prefs["thumb"] or (shots[0] if shots else None)
         )
-        await msg.edit("✅ Done")
+        await msg.edit("✅ Completed")
 
     except:
         await msg.edit("❌ Cancelled / Failed")
+
     finally:
-        ACTIVE=None
+        ACTIVE = None
