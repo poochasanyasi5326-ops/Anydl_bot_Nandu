@@ -1,9 +1,7 @@
-import asyncio
+import asyncio, os
 from pyrogram import Client
 from fastapi import FastAPI
 import uvicorn
-import os
-
 from plugins.command import register_handlers
 
 BOT = Client(
