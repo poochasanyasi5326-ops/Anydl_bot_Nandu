@@ -1,41 +1,40 @@
+import subprocess
 import os
-import asyncio
-import logging
 
-async def take_screen_shot(video_file, output_directory, ttl):
-    # Generates a thumbnail at the 10-second mark
-    out_file_path = os.path.join(output_directory, f"{os.path.basename(video_file)}.jpg")
-    command = [
-        "ffmpeg", "-ss", str(ttl),
-        "-i", video_file,
-        "-vframes", "1",
-        out_file_path
-    ]
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await process.communicate()
-    if os.path.lexists(out_file_path):
-        return out_file_path
-    return None
+def is_streamable(ext: str) -> bool:
+    return ext.lower() in [".mp4", ".mkv", ".webm"]
 
-async def get_metadata(video_file):
-    # Extracts width, height, and duration for the Telegram player
-    command = [
-        "ffprobe", "-v", "error",
-        "-show_entries", "format=duration:stream=width,height",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        video_file
-    ]
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await process.communicate()
-    data = stdout.decode().split()
-    if len(data) >= 3:
-        return int(data[0]), int(data[1]), int(float(data[2]))
-    return 0, 0, 0
+
+def generate_screenshots(video_path: str, output_dir: str):
+    """
+    Generates 3 JPG screenshots from a video.
+    Returns list of screenshot paths.
+    """
+    if not os.path.exists(video_path):
+        raise FileNotFoundError("Video file not found")
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    timestamps = ["00:00:03", "00:00:08", "00:00:15"]
+    screenshots = []
+
+    for i, ts in enumerate(timestamps, start=1):
+        out = os.path.join(output_dir, f"screenshot_{i}.jpg")
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss", ts,
+            "-i", video_path,
+            "-vframes", "1",
+            "-q:v", "4",        # good quality, small size
+            out
+        ]
+        subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        if os.path.exists(out):
+            screenshots.append(out)
+
+    return screenshots
