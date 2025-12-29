@@ -6,7 +6,7 @@ _LAST = {}
 def human(x):
     for u in ["B","KB","MB","GB","TB"]:
         if x < 1024:
-            return f"{x:.2f}{u}"
+            return f"{x:.2f} {u}"
         x /= 1024
 
 async def progress(msg, jid, phase, cur, total):
@@ -26,5 +26,5 @@ async def progress(msg, jid, phase, cur, total):
         )
     )
 
-async def close_keyboard(msg):
+async def close_kb(msg):
     await msg.edit_reply_markup(None)
