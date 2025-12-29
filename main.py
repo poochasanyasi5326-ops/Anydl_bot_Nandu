@@ -1,39 +1,29 @@
-import os
 import asyncio
 from pyrogram import Client
-from aiohttp import web
+from fastapi import FastAPI
+import uvicorn
 
-API_ID = int(os.environ.get("API_ID"))
-API_HASH = os.environ.get("API_HASH")
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+from plugins.command import register_handlers
 
-async def handle(request):
-    return web.Response(text="Bot is Active 🚀")
+BOT = Client(
+    "anydl",
+    api_id=int(__import__("os").getenv("API_ID")),
+    api_hash=__import__("os").getenv("API_HASH"),
+    bot_token=__import__("os").getenv("BOT_TOKEN")
+)
 
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", handle)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", 8080)
-    await site.start()
+app = FastAPI()
 
-class AnyDLBot(Client):
-    def __init__(self):
-        super().__init__(
-            name="anydl_bot",
-            api_id=API_ID,
-            api_hash=API_HASH,
-            bot_token=BOT_TOKEN,
-            plugins=dict(root="plugins"),
-            workers=50
-        )
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
-    async def start(self):
-        if not os.path.exists("downloads"):
-            os.makedirs("downloads")
-        await super().start()
-        await start_web_server()
+async def main():
+    register_handlers(BOT)
+    await BOT.start()
+    uvicorn.Server(
+        uvicorn.Config(app, host="0.0.0.0", port=8000)
+    ).run()
 
 if __name__ == "__main__":
-    AnyDLBot().run()
+    asyncio.run(main())
