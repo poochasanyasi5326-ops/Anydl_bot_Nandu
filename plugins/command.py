@@ -99,20 +99,22 @@ def register(bot):
     @bot.on_callback_query(filters.regex("^stream$"))
     async def stream(_, q):
         prefs(q.from_user.id)["stream"] ^= True
-        await q.answer("Toggled")
+        await q.answer(f"Stream: {'ON' if prefs(q.from_user.id)['stream'] else 'OFF'}")
 
     @bot.on_callback_query(filters.regex("^shots$"))
     async def shots(_, q):
         prefs(q.from_user.id)["shots"] ^= True
-        await q.answer("Toggled")
+        await q.answer(f"Screenshots: {'ON' if prefs(q.from_user.id)['shots'] else 'OFF'}")
 
     @bot.on_callback_query(filters.regex("^disk$"))
     async def disk(_, q):
-        t,u,f = shutil.disk_usage("/")
-        await q.answer(f"Used: {u//1e9}GB", show_alert=True)
+        # Using os.getcwd() is safer on cloud hosts like Koyeb
+        t, u, f = shutil.disk_usage(os.getcwd())
+        await q.answer(f"Free: {f//1e9}GB / Total: {t//1e9}GB", show_alert=True)
 
     @bot.on_callback_query(filters.regex("^reboot$"))
     async def reboot(_, q):
+        await q.answer("Rebooting...")
         os._exit(0)
 
     @bot.on_message(filters.private & filters.photo)
@@ -123,26 +125,37 @@ def register(bot):
             await m.reply("✅ Thumbnail set")
 
     @bot.on_message(filters.private & filters.document)
-    async def forwarded(_, m):
+    async def document_handler(_, m):
         if busy(): return
         RENAME[m.from_user.id] = ("file", m)
         await m.reply("Rename file?", reply_markup=rename_kb())
 
     @bot.on_message(filters.private & filters.text)
-    async def text(_, m):
+    async def text_handler(_, m):
         if m.from_user.id != OWNER or busy(): return
 
-        # Rename text
+        # Handling Custom Rename Input
         if m.from_user.id in RENAME and RENAME[m.from_user.id][0] == "custom":
-            mode, payload = RENAME.pop(m.from_user.id)[1]
-            await run(payload, *mode, prefs(m.from_user.id), m, m.text.strip())
+            # Extract the original data stored in rcustom
+            _, data = RENAME.pop(m.from_user.id)
+            kind, payload = data
+            new_name = m.text.strip()
+            
+            if kind == "yt":
+                # For YouTube, we still need the format which hasn't been picked yet
+                # This part usually needs a more complex flow, but for now:
+                await m.reply("Please select quality first, then rename.")
+            else:
+                mode_map = {"dir": "direct", "tor": "torrent", "file": "file"}
+                await run(payload, mode_map.get(kind, kind), None, prefs(m.from_user.id), m, new_name)
             return
 
         link = m.text.strip()
 
         if "youtu" in link:
-            btn=[]
-            for t,f,l,s in yt_formats(link):
+            btn = []
+            formats = yt_formats(link)
+            for t, f, l, s in formats:
                 btn.append([InlineKeyboardButton(f"{l} – {s} MB", callback_data=f"yt:{f}")])
             btn.append([InlineKeyboardButton("❌ Close", callback_data="close")])
             RENAME[m.from_user.id] = ("yt", link)
@@ -154,39 +167,52 @@ def register(bot):
             await m.reply("Rename file?", reply_markup=rename_kb())
             return
 
-        # direct link
-        RENAME[m.from_user.id] = ("dir", link)
-        await m.reply("Rename file?", reply_markup=rename_kb())
+        if link.startswith(("http://", "https://")):
+            RENAME[m.from_user.id] = ("dir", link)
+            await m.reply("Rename file?", reply_markup=rename_kb())
 
     @bot.on_callback_query(filters.regex("^yt:"))
-    async def yt(_, q):
+    async def yt_callback(_, q):
         fmt = q.data.split(":")[1]
-        link = RENAME[q.from_user.id][1]
+        kind, link = RENAME.get(q.from_user.id, (None, None))
+        if not link:
+            await q.answer("Session expired", show_alert=True)
+            return
         RENAME[q.from_user.id] = (("youtube", fmt), link)
         await q.message.edit("Rename file?", reply_markup=rename_kb())
 
     @bot.on_callback_query(filters.regex("^r:def$"))
     async def rdef(_, q):
+        if q.from_user.id not in RENAME:
+            await q.answer("Expired")
+            return
+        
         kind, payload = RENAME.pop(q.from_user.id)
-        name = payload.split("/")[-1].split("?")[0] or "file.bin"
+        name = "file.bin"
+        if isinstance(payload, str):
+            name = payload.split("/")[-1].split("?")[0] or "file.bin"
+
         if kind == "file":
-            m = payload
-            await m.download(file_name=name)
+            await payload.download() # payload is the message object
+            await q.message.edit("Download started...")
         elif kind == "dir":
             await run(payload, "direct", None, prefs(q.from_user.id), q.message, name)
         elif kind == "tor":
             await run(payload, "torrent", None, prefs(q.from_user.id), q.message, name)
-        else:
+        elif isinstance(kind, tuple): # it's ('youtube', fmt)
             mode, fmt = kind
             await run(payload, mode, fmt, prefs(q.from_user.id), q.message, name)
 
     @bot.on_callback_query(filters.regex("^r:custom$"))
     async def rcustom(_, q):
-        kind, payload = RENAME[q.from_user.id]
-        RENAME[q.from_user.id] = ("custom", (kind, payload))
-        await q.message.edit("Send filename (no spaces added)")
-    
+        if q.from_user.id not in RENAME:
+            await q.answer("Expired")
+            return
+        data = RENAME[q.from_user.id]
+        RENAME[q.from_user.id] = ("custom", data)
+        await q.message.edit("✍️ Send the new filename now.")
+
     @bot.on_callback_query(filters.regex("^cancel:"))
-    async def c(_, q):
+    async def cancel_callback(_, q):
         cancel()
         await q.message.edit("❌ Cancelled")
