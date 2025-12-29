@@ -3,6 +3,8 @@ from pyrogram import Client
 from pyrogram.idle import idle
 from plugins.command import register
 
+print("🚀 AnyDL starting — bot.py loaded")
+
 app = Client(
     "anydl",
     api_id=int(os.getenv("API_ID")),
