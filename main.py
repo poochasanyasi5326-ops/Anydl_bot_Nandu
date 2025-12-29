@@ -3,7 +3,7 @@ from pyrogram import Client
 from pyrogram.idle import idle
 from plugins.command import register
 
-print("🚀 AnyDL starting — bot.py loaded")
+print("🚀 AnyDL starting (main.py)")
 
 app = Client(
     "anydl",
