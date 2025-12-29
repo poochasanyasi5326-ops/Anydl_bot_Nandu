@@ -10,7 +10,7 @@ This bot is **not public**, **not multi-user**, and **not intended for resale or
 
 ## 🔒 Access Control (Strict)
 
-* **Owner ID enforced:** `519459195`
+* **Owner ID enforced:** 
 * Only the owner can:
 
   * Start downloads
