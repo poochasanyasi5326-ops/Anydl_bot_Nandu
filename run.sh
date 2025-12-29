@@ -1,3 +1,4 @@
 #!/bin/bash
-echo "🚀 Starting AnyDL"
-exec python3 -u main.py
+set -e
+echo "🚀 Launching bot.py"
+python3 -u bot.py
