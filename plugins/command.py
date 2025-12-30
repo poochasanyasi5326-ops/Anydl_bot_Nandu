@@ -4,12 +4,12 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from plugins.task_manager import run, busy, yt_formats
 from helper_funcs.ui import close_kb
 
-# --- CONFIG ---
+# Replace with your actual ID or set OWNER_ONLY to False for testing
 OWNER = 519459195 
-OWNER_ONLY = False # Set to True once you confirm the bot responds
+OWNER_ONLY = False 
 
-STATE = {}
 RENAME = {}
+STATE = {}
 
 def prefs(uid):
     return STATE.setdefault(uid, {"stream": True, "shots": True, "thumb": None})
@@ -24,47 +24,32 @@ def dashboard():
          InlineKeyboardButton("🔄 Reboot", callback_data="reboot")]
     ])
 
-def rename_kb():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Default", callback_data="r:def"),
-         InlineKeyboardButton("✏️ Rename", callback_data="r:custom")],
-        [InlineKeyboardButton("❌ Close", callback_data="close")]
-    ])
-
+# This decorator is what Pyrogram looks for in the plugins folder
 @Client.on_message(filters.command("start") & filters.private)
-async def start_cmd(bot, m):
+async def start_handler(bot, m):
     if OWNER_ONLY and m.from_user.id != OWNER:
-        return await m.reply(f"🚫 Private Bot\nYour ID: `{m.from_user.id}`")
-    await m.reply("🚀 **AnyDL Ready**\nSend me a link to begin.", reply_markup=dashboard())
+        return
+    await m.reply("🚀 **AnyDL Ready**\nSend me a link to start.", reply_markup=dashboard())
 
 @Client.on_message(filters.private & filters.text)
 async def text_handler(bot, m):
-    if OWNER_ONLY and m.from_user.id != OWNER: return
-    if busy(): return
-
-    # Custom Rename State
-    if m.from_user.id in RENAME and RENAME[m.from_user.id][0] == "custom":
-        _, data = RENAME.pop(m.from_user.id)
-        kind, payload = data
-        mode_map = {"dir": "direct", "tor": "torrent", "file": "file"}
-        await run(payload, mode_map.get(kind, kind), None, prefs(m.from_user.id), m, m.text.strip())
+    if OWNER_ONLY and m.from_user.id != OWNER:
         return
+    if busy(): 
+        return await m.reply("⚠️ Bot is busy with another task.")
 
     link = m.text.strip()
-    if "youtu" in link:
-        formats = yt_formats(link)
-        btn = [[InlineKeyboardButton(f"{l} - {s}MB", callback_data=f"yt:{f}")] for t, f, l, s in formats]
-        RENAME[m.from_user.id] = ("yt", link)
-        await m.reply("🎥 **Select Quality:**", reply_markup=InlineKeyboardMarkup(btn))
-    elif link.startswith(("http", "magnet:")):
-        RENAME[m.from_user.id] = ("dir" if "http" in link else "tor", link)
-        await m.reply("📂 **Link detected.** Rename file?", reply_markup=rename_kb())
-
-@Client.on_callback_query(filters.regex("^disk$"))
-async def disk_chk(_, q):
-    t, u, f = shutil.disk_usage(os.getcwd())
-    await q.answer(f"Free Space: {f//1e9}GB", show_alert=True)
-
-@Client.on_callback_query(filters.regex("^close$"))
-async def _close(_, q):
-    await q.message.delete()
+    # Simple check to see if it's a URL
+    if link.startswith(("http", "magnet:")):
+        if "youtu" in link:
+            formats = yt_formats(link)
+            btn = [[InlineKeyboardButton(f"{l} - {s}MB", callback_data=f"yt:{f}")] for t, f, l, s in formats]
+            RENAME[m.from_user.id] = ("yt", link)
+            await m.reply("🎥 **Select Quality:**", reply_markup=InlineKeyboardMarkup(btn))
+        else:
+            RENAME[m.from_user.id] = ("dir" if "http" in link else "tor", link)
+            await m.reply("📂 **Link detected.** Do you want to rename?", 
+                          reply_markup=InlineKeyboardMarkup([[
+                              InlineKeyboardButton("✅ Default", callback_data="r:def"),
+                              InlineKeyboardButton("✏️ Rename", callback_data="r:custom")
+                          ]]))
