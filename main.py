@@ -1,42 +1,63 @@
 import os
 import asyncio
-from pyrogram import Client
 from aiohttp import web
+from pyrogram import Client
+from pyrogram.types import Update
 
-# --- FAKE SERVER FOR KOYEB HEALTH CHECKS ---
-async def health_check(request):
-    return web.Response(text="AnyDL is Online")
+# ===== Environment Variables =====
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+API_ID = int(os.environ["API_ID"])
+API_HASH = os.environ["API_HASH"]
 
-async def start_server():
-    server = web.Application()
-    server.router.add_get("/", health_check)
-    runner = web.AppRunner(server)
-    await runner.setup()
-    # Koyeb sends health checks to the PORT env variable (default 8000)
-    port = int(os.getenv("PORT", 8000))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    print(f"🌍 Health check server live on port {port}")
+APP_URL = os.environ["APP_URL"]          # https://your-app.koyeb.app
+PORT = int(os.environ.get("PORT", 8000))
 
-# --- BOT INITIALIZATION ---
-# Using the 'plugins' dict tells Pyrogram to automatically import everything in /plugins
-app = Client(
-    "anydl",
-    api_id=int(os.getenv("API_ID")),
-    api_hash=os.getenv("API_HASH"),
-    bot_token=os.getenv("BOT_TOKEN"),
-    plugins=dict(root="plugins") 
+WEBHOOK_PATH = "/webhook"
+
+# ===== Pyrogram Client =====
+bot = Client(
+    name="anydl_bot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN,
+    plugins=dict(root="plugins")
 )
 
+# ===== HTTP Handlers =====
+async def health(request):
+    return web.Response(text="OK")
+
+async def telegram_webhook(request):
+    data = await request.json()
+    update = Update(**data)
+    await bot.process_update(update)
+    return web.Response(text="OK")
+
+# ===== Web Server =====
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", health)
+    app.router.add_post(WEBHOOK_PATH, telegram_webhook)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+
+# ===== Main =====
 async def main():
-    # 1. Start web server first so Koyeb doesn't restart us
-    await start_server()
-    
-    # 2. Start the Telegram Bot
-    async with app:
-        print("✅ AnyDL Bot is connected to Telegram and listening for updates")
-        # 3. Keep the event loop running
-        await asyncio.Event().wait()
+    await bot.start()
+
+    await bot.bot.set_webhook(
+        url=f"{APP_URL}{WEBHOOK_PATH}",
+        drop_pending_updates=True
+    )
+
+    await start_web_server()
+
+    print("✅ AnyDL Bot running via Telegram Webhook")
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
