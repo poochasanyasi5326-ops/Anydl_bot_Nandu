@@ -3,9 +3,9 @@ import asyncio
 from pyrogram import Client
 from aiohttp import web
 
-# --- FAKE SERVER FOR KOYEB ---
+# --- HEALTH CHECK SERVER FOR KOYEB ---
 async def health_check(request):
-    return web.Response(text="AnyDL is Alive")
+    return web.Response(text="Bot is Alive and Healthy")
 
 async def start_server():
     server = web.Application()
@@ -16,20 +16,21 @@ async def start_server():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
-# --- BOT CONFIG ---
+# --- BOT INITIALIZATION ---
 app = Client(
     "anydl",
     api_id=int(os.getenv("API_ID")),
     api_hash=os.getenv("API_HASH"),
     bot_token=os.getenv("BOT_TOKEN"),
-    plugins=dict(root="plugins")
+    plugins=dict(root="plugins") # Automatically loads files in /plugins
 )
 
 async def main():
     await start_server()
-    print("🌍 Health Server on port 8000")
+    print("🌍 Health check server live on port 8000")
+    
     async with app:
-        print("✅ Bot is Online")
+        print("✅ AnyDL Bot is online. Testing connection...")
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
