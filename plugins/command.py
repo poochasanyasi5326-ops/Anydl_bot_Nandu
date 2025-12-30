@@ -2,34 +2,21 @@ import os, shutil
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# TEMPORARY: Set these to allow the bot to respond to anyone for testing
+# TEMPORARY: Set to False so the bot will finally answer you
 OWNER_ONLY = False 
 OWNER = 519459195 
 
-def dashboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📥 Help", callback_data="help"),
-         InlineKeyboardButton("🖼 Thumbnail", callback_data="thumb")],
-        [InlineKeyboardButton("📊 Disk", callback_data="disk"),
-         InlineKeyboardButton("❌ Close", callback_data="close")]
-    ])
-
 @Client.on_message(filters.command("start") & filters.private)
 async def start_handler(bot, m):
-    # This print will show up in your Koyeb logs
+    # This will show up in your Koyeb logs to confirm it saw you
     print(f"📩 DEBUG: Received /start from User ID: {m.from_user.id}")
     
-    # This message will tell you your EXACT ID
+    # This message will tell you the ID you need to put in your config
     await m.reply(
-        f"✅ **AnyDL is LIVE!**\n\n"
-        f"Your numerical ID is: `{m.from_user.id}`\n\n"
-        "Copy this ID and put it in your OWNER variable later."
+        f"✅ **AnyDL is Connected and Working!**\n\n"
+        f"Your actual numerical ID is: `{m.from_user.id}`\n\n"
+        "Please copy this ID and update the OWNER variable in your code."
     )
-
-@Client.on_callback_query(filters.regex("^disk$"))
-async def disk_chk(_, q):
-    t, u, f = shutil.disk_usage(os.getcwd())
-    await q.answer(f"Free: {f//1e9}GB", show_alert=True)
 
 @Client.on_callback_query(filters.regex("^close$"))
 async def _close(_, q):
