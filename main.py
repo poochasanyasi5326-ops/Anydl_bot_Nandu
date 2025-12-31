@@ -13,12 +13,20 @@ from pyrogram.types import (
 import task_manager as tm
 
 # ================= ENV =================
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-API_ID = int(os.environ["API_ID"])
-API_HASH = os.environ["API_HASH"]
-APP_URL = os.environ["APP_URL"]
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+API_ID = int(os.environ.get("API_ID", 0))
+API_HASH = os.environ.get("API_HASH", "")
+APP_URL = os.environ.get("APP_URL", "")
 PORT = int(os.environ.get("PORT", 8000))
 AUTHORIZED_USERS = list(map(int, os.environ.get("AUTHORIZED_USERS", "").split(","))) if os.environ.get("AUTHORIZED_USERS") else []
+
+# Validate required env vars
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is required")
+if not API_ID:
+    raise ValueError("API_ID environment variable is required")
+if not API_HASH:
+    raise ValueError("API_HASH environment variable is required")
 
 # ================= BOT =================
 bot = Client(
@@ -377,10 +385,17 @@ async def web_server():
 # ================= MAIN =================
 async def main():
     await bot.start()
-    webhook_url = f"{APP_URL}/webhook"
-    await bot.set_webhook(webhook_url)
-    print(f"✅ Bot started! Webhook set to: {webhook_url}")
-    await web_server()
+    
+    # Set webhook if APP_URL is provided, otherwise use polling
+    if APP_URL:
+        webhook_url = f"{APP_URL}/webhook"
+        await bot.set_webhook(webhook_url)
+        print(f"✅ Bot started! Webhook set to: {webhook_url}")
+        await web_server()
+    else:
+        print("✅ Bot started in polling mode (no APP_URL set)")
+        # Keep the bot running
+    
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
