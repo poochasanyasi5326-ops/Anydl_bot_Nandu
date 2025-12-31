@@ -2,6 +2,9 @@ import os
 import asyncio
 import time
 import uuid
+import subprocess
+import json
+import requests
 from aiohttp import web
 from pyrogram import Client, filters
 from pyrogram.types import (
@@ -10,7 +13,6 @@ from pyrogram.types import (
     Message,
     CallbackQuery,
 )
-import task_manager as tm
 
 # ================= ENV =================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -18,6 +20,7 @@ API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 APP_URL = os.environ.get("APP_URL", "")
 PORT = int(os.environ.get("PORT", 8000))
+RD_KEY = os.getenv("REAL_DEBRID_API_KEY")
 AUTHORIZED_USERS = list(map(int, os.environ.get("AUTHORIZED_USERS", "").split(","))) if os.environ.get("AUTHORIZED_USERS") else []
 
 # Validate required env vars
@@ -39,6 +42,8 @@ bot = Client(
 # ================= STATE =================
 USERS = {}
 PENDING_RENAME = {}
+ACTIVE = None
+_LAST = {}
 
 def get_user(uid):
     return USERS.setdefault(uid, {
@@ -52,6 +57,277 @@ def is_authorized(uid):
     if not AUTHORIZED_USERS:
         return True
     return uid in AUTHORIZED_USERS
+
+def busy(): 
+    return ACTIVE is not None
+
+def cancel_task(): 
+    global ACTIVE
+    if ACTIVE: 
+        ACTIVE["stop"] = True
+
+# ================= HELPER FUNCTIONS =================
+def human(x):
+    """Convert bytes to human readable format"""
+    for u in ["B", "KB", "MB", "GB", "TB"]:
+        if x < 1024:
+            return f"{x:.2f} {u}"
+        x /= 1024
+    return f"{x:.2f} PB"
+
+async def progress(msg, jid, phase, cur, total):
+    """Update progress message with current status"""
+    now = time.time()
+    
+    if jid not in _LAST:
+        _LAST[jid] = now
+    if now - _LAST[jid] < 4:
+        return
+    
+    _LAST[jid] = now
+    pct = (cur / total) * 100 if total else 0
+    filled = int(pct / 10)
+    bar = "▰" * filled + "▱" * (10 - filled)
+    
+    text = (
+        f"⏳ **{phase}**\n"
+        f"`{bar}` {pct:.1f}%\n"
+        f"📦 {human(cur)} / {human(total)}"
+    )
+    
+    try:
+        await msg.edit(text, reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("❌ Cancel", callback_data="cancel")
+        ]]))
+    except:
+        pass
+
+async def close_kb(msg):
+    """Remove inline keyboard from message"""
+    try:
+        await msg.edit_reply_markup(None)
+    except:
+        pass
+
+def is_streamable(path):
+    """Check if file is a streamable video format"""
+    ext = os.path.splitext(path)[1].lower()
+    return ext in [".mp4", ".mkv", ".webm", ".avi", ".mov"]
+
+def screenshots(video):
+    """Generate screenshots from video at specific timestamps"""
+    shots = []
+    timestamps = ["00:00:05", "00:10:00"]
+    
+    for t in timestamps:
+        out = f"/tmp/{uuid.uuid4().hex}.jpg"
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-ss", t, "-i", video, "-vframes", "1", "-q:v", "2", out],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30
+            )
+            if os.path.exists(out) and os.path.getsize(out) > 0:
+                shots.append(out)
+        except:
+            if os.path.exists(out):
+                os.remove(out)
+    return shots
+
+def yt_formats(url):
+    """Get available YouTube formats with file sizes"""
+    try:
+        cmd = ["yt-dlp", "-J", url]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode != 0:
+            return []
+        
+        info = json.loads(result.stdout)
+        formats = []
+        
+        for f in info.get('formats', []):
+            if not f.get('height'):
+                continue
+            
+            filesize = f.get('filesize') or f.get('filesize_approx')
+            if not filesize:
+                continue
+            
+            formats.append((
+                f['format_id'],
+                f['format_id'],
+                f"{f.get('height', 'audio')}p",
+                round(filesize / 1e6, 1)
+            ))
+        
+        formats.sort(key=lambda x: int(x[2].replace('p', '')), reverse=True)
+        
+        seen = set()
+        unique_formats = []
+        for fmt in formats:
+            if fmt[2] not in seen:
+                seen.add(fmt[2])
+                unique_formats.append(fmt)
+        
+        return unique_formats[:10]
+    except Exception as e:
+        print(f"Error getting formats: {e}")
+        return []
+
+async def http_dl(url, path, msg, jid):
+    """Download file from direct URL with progress tracking"""
+    await msg.edit("⏳ **Starting download...**")
+    
+    r = requests.get(url, stream=True, timeout=30)
+    r.raise_for_status()
+    
+    total = int(r.headers.get('content-length', 0))
+    cur = 0
+    
+    with open(path, "wb") as f:
+        for chunk in r.iter_content(chunk_size=1024*512):
+            if ACTIVE and ACTIVE.get("stop"):
+                raise Exception("Cancelled by user")
+            
+            if chunk:
+                f.write(chunk)
+                cur += len(chunk)
+                await progress(msg, jid, "Downloading", cur, total)
+
+async def run_task(job, mode, fmt, prefs, msg, fname):
+    """Main task runner for downloads"""
+    global ACTIVE
+    jid = str(uuid.uuid4())
+    ACTIVE = {"stop": False}
+    out = f"/tmp/{fname}"
+    
+    try:
+        if mode == "youtube":
+            await msg.edit(f"⏳ **Downloading YouTube video...**\n`{fname}`")
+            
+            cmd = ["yt-dlp", "-f", fmt, "-o", out, job]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            while proc.returncode is None:
+                if ACTIVE["stop"]:
+                    proc.kill()
+                    raise Exception("Cancelled by user")
+                await asyncio.sleep(1)
+                await proc.wait()
+            
+            if proc.returncode != 0:
+                raise Exception("Download failed")
+        
+        elif mode == "torrent":
+            await msg.edit(f"⏳ **Processing torrent...**\n`{fname}`")
+            
+            if not RD_KEY:
+                raise Exception("Real-Debrid API key not configured")
+            
+            h = {"Authorization": f"Bearer {RD_KEY}"}
+            
+            r = requests.post(
+                "https://api.real-debrid.com/rest/1.0/torrents/addMagnet",
+                headers=h,
+                data={"magnet": job},
+                timeout=30
+            )
+            r.raise_for_status()
+            tid = r.json()['id']
+            
+            requests.post(
+                f"https://api.real-debrid.com/rest/1.0/torrents/selectFiles/{tid}",
+                headers=h,
+                data={"files": "all"},
+                timeout=30
+            )
+            
+            await msg.edit("⏳ **Waiting for torrent to be ready...**")
+            for _ in range(60):
+                if ACTIVE["stop"]:
+                    raise Exception("Cancelled by user")
+                
+                info = requests.get(
+                    f"https://api.real-debrid.com/rest/1.0/torrents/info/{tid}",
+                    headers=h,
+                    timeout=30
+                ).json()
+                
+                if info['status'] == 'downloaded':
+                    break
+                
+                await asyncio.sleep(5)
+            else:
+                raise Exception("Torrent download timeout")
+            
+            if not info.get('links'):
+                raise Exception("No files in torrent")
+            
+            link = info['links'][0]
+            unrestrict = requests.post(
+                "https://api.real-debrid.com/rest/1.0/unrestrict/link",
+                headers=h,
+                data={"link": link},
+                timeout=30
+            ).json()
+            
+            await http_dl(unrestrict['download'], out, msg, jid)
+        
+        elif mode == "file":
+            await msg.edit(f"⏳ **Downloading file...**\n`{fname}`")
+            await job.download(file_name=out)
+        
+        else:
+            await http_dl(job, out, msg, jid)
+        
+        if not os.path.exists(out):
+            raise Exception("Download failed - file not found")
+        
+        shots = []
+        if prefs.get("shots") and is_streamable(out):
+            await msg.edit("📸 **Generating screenshots...**")
+            shots = screenshots(out)
+        
+        await msg.edit("📤 **Uploading to Telegram...**")
+        
+        file_size = os.path.getsize(out)
+        caption = f"✅ **{fname}**\n📦 Size: {human(file_size)}"
+        
+        thumb = prefs.get("thumb") or (shots[0] if shots else None)
+        
+        await msg.reply_document(
+            out,
+            thumb=thumb,
+            supports_streaming=prefs.get("stream", False),
+            caption=caption,
+            progress=lambda c, t: progress(msg, jid, "Uploading", c, t)
+        )
+        
+        await close_kb(msg)
+        await msg.edit("✅ **Upload complete!**")
+        
+        for shot in shots:
+            try:
+                os.remove(shot)
+            except:
+                pass
+    
+    except Exception as e:
+        await msg.edit(f"❌ **Error:** `{str(e)}`")
+    
+    finally:
+        if os.path.exists(out):
+            try:
+                os.remove(out)
+            except:
+                pass
+        ACTIVE = None
 
 # ================= UI =================
 def main_menu(authorized=True):
@@ -111,7 +387,7 @@ def quality_menu():
         [InlineKeyboardButton("⬅️ Back", callback_data="settings")]
     ])
 
-# ================= START =================
+# ================= HANDLERS =================
 @bot.on_message(filters.command("start") & filters.private)
 async def start(_, m: Message):
     uid = m.from_user.id
@@ -126,7 +402,6 @@ async def start(_, m: Message):
     
     await m.reply(welcome_text, reply_markup=main_menu(authorized))
 
-# ================= CALLBACKS =================
 @bot.on_callback_query()
 async def callbacks(_, q: CallbackQuery):
     uid = q.from_user.id
@@ -196,7 +471,8 @@ async def callbacks(_, q: CallbackQuery):
             await q.answer("❌ No thumbnail set", show_alert=True)
 
     elif q.data == "reboot":
-        tm.ACTIVE = None
+        global ACTIVE
+        ACTIVE = None
         await q.answer("✅ Disk rebooted successfully", show_alert=True)
 
     elif q.data == "help":
@@ -223,16 +499,10 @@ async def callbacks(_, q: CallbackQuery):
         )
         await q.message.reply(help_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back")]]))
 
-    elif q.data.startswith("cancel_"):
-        tid = q.data.replace("cancel_", "")
-        tm.cancel()
+    elif q.data == "cancel":
+        cancel_task()
         await q.message.edit("❌ **Task cancelled**")
         await q.answer("Task cancelled")
-
-    elif q.data.startswith("rename_"):
-        tid = q.data.replace("rename_", "")
-        PENDING_RENAME[uid] = tid
-        await q.message.reply("✏️ Send the new filename:")
 
     elif q.data.startswith("fmt_"):
         if not authorized:
@@ -252,9 +522,8 @@ async def callbacks(_, q: CallbackQuery):
         }
         
         fname = f"video_{uuid.uuid4().hex[:8]}.mp4"
-        await tm.run(url, "youtube", fmt_id, prefs, status, fname)
+        asyncio.create_task(run_task(url, "youtube", fmt_id, prefs, status, fname))
 
-# ================= THUMBNAIL =================
 @bot.on_message(filters.photo & filters.private)
 async def set_thumb(_, m: Message):
     uid = m.from_user.id
@@ -265,7 +534,6 @@ async def set_thumb(_, m: Message):
     USERS[uid]["thumbnail"] = m.photo.file_id
     await m.reply("✅ Thumbnail saved successfully!")
 
-# ================= RENAME HANDLER =================
 @bot.on_message(filters.text & filters.private & ~filters.command(["start", "cancel"]))
 async def handle_text(_, m: Message):
     uid = m.from_user.id
@@ -274,21 +542,18 @@ async def handle_text(_, m: Message):
         await m.reply("❌ You are not authorized to use this bot.", reply_markup=main_menu(False))
         return
     
-    # Check if user is renaming
     if uid in PENDING_RENAME:
         new_name = m.text.strip()
         del PENDING_RENAME[uid]
         await m.reply(f"✅ Filename will be: `{new_name}`")
         return
     
-    # Check if it's a link
     text = m.text.strip()
     if text.startswith("http") or text.startswith("magnet:"):
         await handle_link(_, m)
     else:
         await m.reply("ℹ️ Send me a valid link (YouTube, Magnet, or Direct URL)")
 
-# ================= DOWNLOAD ENTRY =================
 async def handle_link(_, m: Message):
     uid = m.from_user.id
     user = get_user(uid)
@@ -297,26 +562,23 @@ async def handle_link(_, m: Message):
         await m.reply("❌ Unauthorized")
         return
     
-    if tm.busy():
+    if busy():
         await m.reply("⚠️ A task is already running. Please wait.")
         return
     
     url = m.text.strip()
     
-    # Detect link type
     if "youtube.com" in url or "youtu.be" in url:
-        # YouTube - show quality selector
         try:
-            formats = tm.yt_formats(url)
+            formats = yt_formats(url)
             if not formats:
                 await m.reply("❌ Could not fetch video formats")
                 return
             
             buttons = []
-            for fmt_id, _, res, size in formats[:9]:  # Limit to 9 options
+            for fmt_id, _, res, size in formats[:9]:
                 buttons.append(InlineKeyboardButton(f"{res} ({size}MB)", callback_data=f"fmt_{fmt_id}"))
             
-            # Arrange in rows of 2
             kb = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
             kb.append([InlineKeyboardButton("❌ Cancel", callback_data="back")])
             
@@ -325,7 +587,6 @@ async def handle_link(_, m: Message):
             await m.reply(f"❌ Error: {e}")
     
     elif url.startswith("magnet:"):
-        # Magnet/Torrent
         fname = f"torrent_{uuid.uuid4().hex[:8]}.mkv"
         status = await m.reply(f"⏳ **Starting torrent download...**\n`{fname}`")
         
@@ -335,10 +596,9 @@ async def handle_link(_, m: Message):
             "shots": user["screenshots"]
         }
         
-        asyncio.create_task(tm.run(url, "torrent", None, prefs, status, fname))
+        asyncio.create_task(run_task(url, "torrent", None, prefs, status, fname))
     
     else:
-        # Direct link
         fname = f"file_{uuid.uuid4().hex[:8]}.mp4"
         status = await m.reply(f"⏳ **Starting download...**\n`{fname}`")
         
@@ -348,17 +608,16 @@ async def handle_link(_, m: Message):
             "shots": user["screenshots"]
         }
         
-        asyncio.create_task(tm.run(url, "direct", None, prefs, status, fname))
+        asyncio.create_task(run_task(url, "direct", None, prefs, status, fname))
 
-# ================= CANCEL COMMAND =================
 @bot.on_message(filters.command("cancel") & filters.private)
 async def cancel_cmd(_, m: Message):
     if not is_authorized(m.from_user.id):
         await m.reply("❌ Unauthorized")
         return
     
-    if tm.busy():
-        tm.cancel()
+    if busy():
+        cancel_task()
         await m.reply("✅ Current task cancelled")
     else:
         await m.reply("ℹ️ No active task to cancel")
@@ -386,15 +645,13 @@ async def web_server():
 async def main():
     await bot.start()
     
-    # Set webhook if APP_URL is provided, otherwise use polling
     if APP_URL:
         webhook_url = f"{APP_URL}/webhook"
         await bot.set_webhook(webhook_url)
         print(f"✅ Bot started! Webhook set to: {webhook_url}")
         await web_server()
     else:
-        print("✅ Bot started in polling mode (no APP_URL set)")
-        # Keep the bot running
+        print("✅ Bot started in polling mode")
     
     await asyncio.Event().wait()
 
