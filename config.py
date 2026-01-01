@@ -3,10 +3,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_ID = int(os.getenv("API_ID", 0))
+API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-OWNER_ID = 519459195  # ENFORCED
+OWNER_ID = 519459195
 
-DOWNLOAD_DIR = "/tmp/anydl"
+DOWNLOAD_DIR = "downloads"
+THUMB_DIR = "thumbnails"
+
