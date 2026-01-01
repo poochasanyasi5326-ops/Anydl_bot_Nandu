@@ -1,58 +1,49 @@
 import os
 import asyncio
 from dotenv import load_dotenv
-
 from pyrogram import Client, filters, idle
 from pyrogram.errors import FloodWait
 
-# -------------------------------------------------
-# Load environment variables
-# -------------------------------------------------
 load_dotenv()
 
 API_ID = int(os.getenv("API_ID", 0))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-if not API_ID or not API_HASH or not BOT_TOKEN:
-    raise RuntimeError("Missing API_ID / API_HASH / BOT_TOKEN")
+OWNER_ID = 519459195  # your Telegram ID
 
-# -------------------------------------------------
-# Pyrogram client (POLLING ONLY)
-# -------------------------------------------------
+if not API_ID or not API_HASH or not BOT_TOKEN:
+    raise RuntimeError("Missing API credentials")
+
 bot = Client(
-    name="anydl_personal",
+    "anydl_bot",
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN
 )
 
-# -------------------------------------------------
-# Commands
-# -------------------------------------------------
+def owner_only(func):
+    async def wrapper(client, message):
+        if message.from_user.id != OWNER_ID:
+            await message.reply_text("⛔ Unauthorized")
+            return
+        return await func(client, message)
+    return wrapper
+
 @bot.on_message(filters.command("start"))
+@owner_only
 async def start_handler(_, message):
     await message.reply_text(
-        "✅ AnyDL bot is running.\nSend a YouTube or direct link."
+        "✅ AnyDL Bot is running.\n\n"
+        "Send a YouTube link to begin."
     )
 
-@bot.on_message(filters.command("help"))
-async def help_handler(_, message):
-    await message.reply_text(
-        "/start - Check bot status\n"
-        "/help - Show this message\n\n"
-        "Send a supported link to begin."
-    )
-
-# -------------------------------------------------
-# Lifecycle (FloodWait safe)
-# -------------------------------------------------
 async def main():
     while True:
         try:
             await bot.start()
             print("✅ Bot started and polling")
-            await idle()          # KEEP PROCESS ALIVE
+            await idle()   # BLOCKS FOREVER
             break
         except FloodWait as e:
             print(f"⚠️ FloodWait: sleeping {e.value}s")
@@ -61,10 +52,5 @@ async def main():
             print(f"❌ Fatal error: {e}")
             await asyncio.sleep(10)
 
-    await bot.stop()
-
-# -------------------------------------------------
-# Entrypoint
-# -------------------------------------------------
 if __name__ == "__main__":
     asyncio.run(main())
