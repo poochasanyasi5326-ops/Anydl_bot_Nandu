@@ -9,6 +9,5 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 OWNER_ID = 519459195
 
-DOWNLOAD_DIR = "downloads"
-THUMB_DIR = "thumbnails"
-
+DOWNLOAD_DIR = "/tmp/anydl"
+SCREENSHOT_COUNT = 5
