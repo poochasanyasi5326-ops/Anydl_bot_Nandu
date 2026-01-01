@@ -1,10 +1,8 @@
 import os
 import asyncio
 from dotenv import load_dotenv
-
 from pyrogram import Client, filters, idle
 from pyrogram.errors import FloodWait
-
 from aiohttp import web
 
 # ------------------ ENV ------------------
@@ -14,7 +12,7 @@ API_ID = int(os.getenv("API_ID", 0))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-OWNER_ID = 519459195  # your Telegram ID
+OWNER_ID = 519459195  # YOUR Telegram ID
 PORT = int(os.getenv("PORT", 8000))
 
 if not API_ID or not API_HASH or not BOT_TOKEN:
@@ -43,28 +41,26 @@ def owner_only(func):
 async def start_handler(_, message):
     await message.reply_text(
         "✅ AnyDL Bot is running.\n\n"
+        "Phase-1 ready.\n"
         "Send a YouTube link to begin."
     )
 
-# ------------------ HEALTH SERVER ------------------
-async def health(_):
+# ------------------ FAKE SERVER (HEALTH CHECK) ------------------
+async def health(request):
     return web.Response(text="OK")
 
-async def start_health_server():
+async def start_fake_server():
     app = web.Application()
     app.router.add_get("/", health)
-
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
-
     print(f"🌐 Health server running on port {PORT}")
 
 # ------------------ MAIN ------------------
 async def main():
-    # Start fake HTTP server (for Koyeb)
-    await start_health_server()
+    await start_fake_server()
 
     while True:
         try:
@@ -76,7 +72,7 @@ async def main():
             await asyncio.sleep(e.value)
         except Exception as e:
             print(f"❌ Fatal error: {e}")
-            await asyncio.sleep(10)
+            await asyncio.sleep(5)
 
 # ------------------ ENTRY ------------------
 if __name__ == "__main__":
