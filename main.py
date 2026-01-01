@@ -1,9 +1,9 @@
 import os
 import asyncio
+import re
 from dotenv import load_dotenv
 from pyrogram import Client, filters, idle
 from pyrogram.errors import FloodWait
-from aiohttp import web
 
 # ------------------ ENV ------------------
 load_dotenv()
@@ -12,8 +12,7 @@ API_ID = int(os.getenv("API_ID", 0))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-OWNER_ID = 519459195
-PORT = int(os.getenv("PORT", 8000))
+OWNER_ID = 519459195  # YOUR Telegram ID
 
 if not API_ID or not API_HASH or not BOT_TOKEN:
     raise RuntimeError("Missing API credentials")
@@ -35,37 +34,50 @@ def owner_only(func):
         return await func(client, message)
     return wrapper
 
+# ------------------ HELP TEXT ------------------
+HELP_TEXT = (
+    "🎬 **AnyDL Bot – Phase 1**\n\n"
+    "✅ Owner-only bot\n"
+    "✅ YouTube link detection\n"
+    "🚧 Variants, rename, progress: coming next\n\n"
+    "Send a YouTube link to begin."
+)
+
 # ------------------ COMMANDS ------------------
 @bot.on_message(filters.command("start"))
 @owner_only
 async def start_handler(_, message):
+    await message.reply_text(HELP_TEXT)
+
+# ------------------ YOUTUBE LINK HANDLER (PHASE 1) ------------------
+YOUTUBE_REGEX = re.compile(
+    r"(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+"
+)
+
+@bot.on_message(filters.text & ~filters.command(["start"]))
+@owner_only
+async def youtube_handler(_, message):
+    text = message.text.strip()
+
+    if not YOUTUBE_REGEX.match(text):
+        await message.reply_text("❌ Not a YouTube link.")
+        return
+
+    # Phase-1 response (no download yet)
     await message.reply_text(
-        "✅ AnyDL Bot is running.\n\n"
-        "Phase-1 enabled:\n"
-        "• YouTube download\n"
-        "• Variants\n"
+        "📥 **YouTube link received**\n\n"
+        "Phase-1 active:\n"
+        "• Link validated\n"
+        "• Job registered in memory\n\n"
+        "🚧 Next steps (Phase-2):\n"
+        "• Quality selection buttons\n"
         "• Rename\n"
-        "• Progress\n"
-        "• Screenshots (manual)\n"
+        "• Progress tracker\n"
+        "• Upload options"
     )
-
-# ------------------ HEALTH SERVER ------------------
-async def health(request):
-    return web.Response(text="OK")
-
-async def start_health_server():
-    app = web.Application()
-    app.router.add_get("/", health)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    print(f"🌐 Health check running on port {PORT}")
 
 # ------------------ MAIN ------------------
 async def main():
-    await start_health_server()
-
     while True:
         try:
             await bot.start()
