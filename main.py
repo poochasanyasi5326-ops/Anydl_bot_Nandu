@@ -5,22 +5,20 @@ from pyrogram import Client, filters, idle
 from pyrogram.errors import FloodWait
 from aiohttp import web
 
-from yt_handler import handle_youtube
-from jobs import JOBS
-
-# ---------------- ENV ----------------
+# ------------------ ENV ------------------
 load_dotenv()
 
 API_ID = int(os.getenv("API_ID", 0))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+
 OWNER_ID = 519459195
 PORT = int(os.getenv("PORT", 8000))
 
 if not API_ID or not API_HASH or not BOT_TOKEN:
     raise RuntimeError("Missing API credentials")
 
-# ---------------- BOT ----------------
+# ------------------ BOT ------------------
 bot = Client(
     "anydl_bot",
     api_id=API_ID,
@@ -28,7 +26,7 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
-# ---------------- OWNER GUARD ----------------
+# ------------------ OWNER GUARD ------------------
 def owner_only(func):
     async def wrapper(client, message):
         if not message.from_user or message.from_user.id != OWNER_ID:
@@ -37,28 +35,21 @@ def owner_only(func):
         return await func(client, message)
     return wrapper
 
-# ---------------- COMMANDS ----------------
+# ------------------ COMMANDS ------------------
 @bot.on_message(filters.command("start"))
 @owner_only
 async def start_handler(_, message):
     await message.reply_text(
-        "✅ AnyDL Phase-1 is running\n\n"
-        "• YouTube downloader\n"
-        "• Variants + Rename\n"
-        "• Progress + Cancel\n"
-        "• Screenshot on demand\n\n"
-        "Send a YouTube link."
+        "✅ AnyDL Bot is running.\n\n"
+        "Phase-1 enabled:\n"
+        "• YouTube download\n"
+        "• Variants\n"
+        "• Rename\n"
+        "• Progress\n"
+        "• Screenshots (manual)\n"
     )
 
-@bot.on_message(filters.text & ~filters.command)
-@owner_only
-async def link_handler(client, message):
-    if "youtu" in message.text:
-        await handle_youtube(client, message)
-    else:
-        await message.reply_text("❌ Unsupported link")
-
-# ---------------- HEALTH SERVER ----------------
+# ------------------ HEALTH SERVER ------------------
 async def health(request):
     return web.Response(text="OK")
 
@@ -69,8 +60,9 @@ async def start_health_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
+    print(f"🌐 Health check running on port {PORT}")
 
-# ---------------- MAIN ----------------
+# ------------------ MAIN ------------------
 async def main():
     await start_health_server()
 
@@ -78,13 +70,14 @@ async def main():
         try:
             await bot.start()
             print("✅ Bot started and polling")
-            await idle()
+            await idle()  # BLOCK FOREVER
         except FloodWait as e:
+            print(f"⚠️ FloodWait: sleeping {e.value}s")
             await asyncio.sleep(e.value)
         except Exception as e:
-            print("Fatal:", e)
+            print(f"❌ Fatal error: {e}")
             await asyncio.sleep(5)
 
-# ---------------- ENTRY ----------------
+# ------------------ ENTRY ------------------
 if __name__ == "__main__":
     asyncio.run(main())
