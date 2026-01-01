@@ -1,9 +1,0 @@
-version: "3.9"
-
-services:
-  anydl-bot:
-    build: .
-    container_name: anydl_bot
-    restart: unless-stopped
-    env_file:
-      - .env
