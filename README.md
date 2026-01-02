@@ -4,8 +4,6 @@ A powerful Telegram bot for downloading content from YouTube, torrents, and dire
 
 ## Features
 ✅ YouTube quality selector with file sizes
-✅ Torrent/Magnet support (Real-Debrid)
-✅ Thumbnail management
 ✅ Progress tracking
 ✅ Screenshot generation
 ✅ Authorization system
